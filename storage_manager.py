@@ -54,8 +54,14 @@ def upload_posts_to_storage(posts: list[Post], group_name: str) -> tuple[str, in
     # Create timestamp folder
     timestamp = get_timestamp_folder()
     
-    # Sanitize group name for folder path
-    safe_group_name = group_name.replace(" ", "_").replace("/", "_")[:50]
+    # Sanitize group name for folder path - remove all special characters
+    import re
+    # Keep only alphanumeric, underscore, and hyphen
+    safe_group_name = re.sub(r'[^a-zA-Z0-9_-]', '_', group_name)
+    # Remove consecutive underscores
+    safe_group_name = re.sub(r'_+', '_', safe_group_name)
+    # Trim to 50 chars and remove trailing underscores
+    safe_group_name = safe_group_name[:50].rstrip('_')
     
     # Storage path: listing_data/GroupName/YYYY-MM-DD_HH-MM-SS/posts.json
     folder_path = f"{STORAGE_BASE_PATH}/{safe_group_name}/{timestamp}"
