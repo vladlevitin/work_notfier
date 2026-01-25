@@ -1,0 +1,6 @@
+selenium
+msal
+requests
+python-dotenv
+fastapi
+uvicorn[standard]
