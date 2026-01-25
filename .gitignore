@@ -34,6 +34,10 @@ wheels/
 # Edge Profile
 edge_profile/
 
+# Other projects (not part of this repo)
+tinder_automation/
+vlimplement/
+
 # Node
 node_modules/
 npm-debug.log*
