@@ -24,10 +24,15 @@ STORAGE_BASE_PATH = "listing_data"
 
 # Initialize Supabase client
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+# Priority: SERVICE_KEY > SECRET_KEY > ANON_KEY (same as Tinder automation)
+SUPABASE_KEY = (
+    os.getenv("SUPABASE_SERVICE_KEY") or 
+    os.getenv("SUPABASE_SECRET_KEY") or 
+    os.getenv("SUPABASE_KEY")
+)
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in .env file")
+    raise ValueError("SUPABASE_URL and SUPABASE_KEY (or SUPABASE_SERVICE_KEY) must be set in .env file")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
