@@ -1,4 +1,4 @@
-"""API client for Facebook Work Notifier dashboard."""
+// API client for Facebook Work Notifier dashboard
 
 const API_BASE = '/api';
 
