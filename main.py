@@ -9,22 +9,28 @@ from selenium.webdriver.edge.options import Options
 from selenium.webdriver.edge.service import Service
 
 from browser_manager import get_edge_binary_path, prepare_browser_profile
-from database import init_database, save_posts, get_posts, mark_as_notified
+from supabase_db import save_posts, get_posts, mark_as_notified, get_stats
 from email_notifier import send_email_notification
 from scraper import filter_posts_by_keywords, print_keywords, print_posts, scrape_facebook_group
-
-
-# Facebook groups to scrape
-FACEBOOK_GROUPS = [
-    "https://www.facebook.com/groups/2014558715497143",  # Småjobber utføres og ønskes i Oslo og Viken
-    "https://www.facebook.com/groups/857134597636986",   # Second group
-]
+from config import FACEBOOK_GROUPS, SCROLL_STEPS_PER_GROUP
 
 
 def main() -> int:
     """Main function to run the Facebook work notifier."""
-    # Initialize database
-    init_database()
+    # Display stats
+    print("\n" + "="*80)
+    print("FACEBOOK WORK NOTIFIER - Starting...")
+    print("="*80)
+    
+    try:
+        stats = get_stats()
+        print(f"Current database stats:")
+        print(f"  Total posts: {stats['total']}")
+        print(f"  New posts (not notified): {stats['new']}")
+        for group_stat in stats['by_group']:
+            print(f"  {group_stat['group']}: {group_stat['count']}")
+    except Exception as e:
+        print(f"Could not load stats: {e}")
     
     # Setup browser profile
     user_data_dir = Path(__file__).resolve().parent / "edge_profile"
@@ -56,37 +62,46 @@ def main() -> int:
     new_relevant_posts = []
 
     try:
-        # Loop through all Facebook groups
-        for group_url in FACEBOOK_GROUPS:
+        # Loop through all Facebook groups from config
+        print(f"\nWill scrape {len(FACEBOOK_GROUPS)} Facebook groups ({SCROLL_STEPS_PER_GROUP} scrolls each)")
+        
+        for idx, group_url in enumerate(FACEBOOK_GROUPS, 1):
             print(f"\n{'='*80}")
-            print(f"Scraping group: {group_url}")
+            print(f"[{idx}/{len(FACEBOOK_GROUPS)}] Scraping group: {group_url}")
             print(f"{'='*80}")
             
-            # Scrape Facebook group
-            posts = scrape_facebook_group(driver, group_url, scroll_steps=5)
+            # Scrape Facebook group - get ALL posts
+            posts = scrape_facebook_group(driver, group_url, scroll_steps=SCROLL_STEPS_PER_GROUP)
             all_scraped_posts.extend(posts)
             
-            # Save to database (only new posts will be saved)
+            print(f"\n✅ Scraped {len(posts)} posts from this group")
+            
+            # Save ALL posts to Supabase (regardless of keywords)
             new_count, skipped_count = save_posts(posts)
-            print(f"\n✅ Database: {new_count} new posts added, {skipped_count} duplicates skipped")
+            print(f"📊 Supabase: {new_count} new posts added, {skipped_count} duplicates skipped")
             
             # Filter for relevant keywords
             relevant_posts = filter_posts_by_keywords(posts)
+            print(f"🔍 Found {len(relevant_posts)} posts matching keywords")
             
             # Check which relevant posts are NEW (not yet notified)
             for post in relevant_posts:
                 # Get from database to check notified status
-                db_posts = get_posts(limit=1, offset=0, group_url=post["group_url"], search=None, only_new=True)
-                # Check if this specific post_id is in the new posts
-                if any(db_post["post_id"] == post["post_id"] for db_post in db_posts):
-                    new_relevant_posts.append(post)
+                try:
+                    db_posts = get_posts(limit=1, offset=0, group_url=None, search=None, only_new=True)
+                    # Check if this specific post_id is in the new posts
+                    if any(db_post["post_id"] == post["post_id"] for db_post in db_posts):
+                        new_relevant_posts.append(post)
+                except Exception as e:
+                    print(f"Warning: Could not check notification status for post {post['post_id']}: {e}")
         
         # Display results
         print(f"\n{'='*80}")
         print(f"SUMMARY")
         print(f"{'='*80}")
         print(f"Total posts scraped: {len(all_scraped_posts)}")
-        print(f"New relevant posts (not yet notified): {len(new_relevant_posts)}")
+        print(f"New posts saved to Supabase: {sum(save_posts([p])[0] for p in all_scraped_posts)}")
+        print(f"New relevant posts (matching keywords, not yet notified): {len(new_relevant_posts)}")
         
         print_keywords()
         
@@ -94,19 +109,19 @@ def main() -> int:
             print_posts(new_relevant_posts, "New relevant posts for notification")
             
             # Send email notification
-            print(f"\nSending email notification with {len(new_relevant_posts)} matching posts...")
+            print(f"\n📧 Sending email notification with {len(new_relevant_posts)} matching posts...")
             send_email_notification(new_relevant_posts, FACEBOOK_GROUPS[0])
-            print("Email sent successfully!")
+            print("✅ Email sent successfully!")
             
-            # Mark posts as notified
+            # Mark posts as notified in Supabase
             post_ids = [p["post_id"] for p in new_relevant_posts if p["post_id"] != "unknown"]
             if post_ids:
                 mark_as_notified(post_ids)
-                print(f"✅ Marked {len(post_ids)} posts as notified")
+                print(f"✅ Marked {len(post_ids)} posts as notified in Supabase")
         else:
             print("\n✅ No new relevant posts to notify about")
 
-        print("\nScrolling finished. Press Enter to close.")
+        print("\nScraping finished. Press Enter to close.")
         input()
 
     finally:
