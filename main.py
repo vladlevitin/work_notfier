@@ -9,7 +9,7 @@ from selenium.webdriver.edge.options import Options
 from selenium.webdriver.edge.service import Service
 
 from browser_manager import get_edge_binary_path, prepare_browser_profile
-from supabase_db import save_posts, get_posts, mark_as_notified, get_stats
+from database_sqlalchemy import save_posts, get_posts, mark_as_notified, get_stats, init_database
 from email_notifier import send_email_notification
 from scraper import filter_posts_by_keywords, print_keywords, print_posts, scrape_facebook_group
 from config import FACEBOOK_GROUPS, SCROLL_STEPS_PER_GROUP
@@ -17,6 +17,9 @@ from config import FACEBOOK_GROUPS, SCROLL_STEPS_PER_GROUP
 
 def main() -> int:
     """Main function to run the Facebook work notifier."""
+    # Initialize database
+    init_database()
+    
     # Display stats
     print("\n" + "="*80)
     print("FACEBOOK WORK NOTIFIER - Starting...")

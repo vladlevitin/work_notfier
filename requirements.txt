@@ -4,4 +4,5 @@ requests
 python-dotenv
 fastapi
 uvicorn[standard]
-supabase
+sqlalchemy
+psycopg2-binary

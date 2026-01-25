@@ -5,9 +5,9 @@ from typing import Optional
 import sys
 from pathlib import Path
 
-# Add parent directory to path to import supabase_db module
+# Add parent directory to path to import database module
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
-from supabase_db import get_posts, get_post_count, get_stats
+from database_sqlalchemy import get_posts, get_post_count, get_stats
 
 router = APIRouter()
 
