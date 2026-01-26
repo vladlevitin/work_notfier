@@ -1,6 +1,6 @@
 // API client for Facebook Work Notifier dashboard
 
-const API_BASE = '/api';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 export interface Post {
   post_id: string;
