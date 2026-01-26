@@ -14,7 +14,7 @@ load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY")
 LOCAL_BACKEND = "http://localhost:8000"
-DEPLOYED_BACKEND = "https://work-notifier-backend.onrender.com"
+DEPLOYED_BACKEND = "https://work-notfier.vercel.app"  # Your Vercel URL
 
 print("=" * 70)
 print(" COMPREHENSIVE CONNECTION TEST")
@@ -76,7 +76,7 @@ except Exception as e:
     local_works = False
 
 # Test 3: Deployed Backend
-print("\n[TEST 3] DEPLOYED BACKEND API (Render)")
+print("\n[TEST 3] DEPLOYED BACKEND API (Vercel)")
 print("-" * 70)
 try:
     print(f"URL: {DEPLOYED_BACKEND}/api/stats")
@@ -125,7 +125,7 @@ print("=" * 70)
 results = [
     ("Supabase Database", supabase_works),
     ("Local Backend (localhost:8000)", local_works),
-    ("Deployed Backend (Render)", deployed_works)
+    ("Deployed Backend (Vercel)", deployed_works)
 ]
 
 for name, status in results:

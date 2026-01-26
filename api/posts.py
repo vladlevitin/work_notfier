@@ -4,25 +4,78 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 import json
 import os
-import sys
+from typing import Optional
+from supabase import create_client, Client
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+# Initialize Supabase
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = (
+    os.getenv("SUPABASE_SERVICE_KEY") or 
+    os.getenv("SUPABASE_SECRET_KEY") or 
+    os.getenv("SUPABASE_KEY")
+)
 
-from backend.app.db import get_posts, get_post_count
+
+def get_posts(
+    limit: int = 100,
+    offset: int = 0,
+    group_url: Optional[str] = None,
+    search: Optional[str] = None,
+    only_new: bool = False
+) -> list[dict]:
+    """Retrieve posts from the database with optional filtering."""
+    try:
+        supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        query = supabase.table("posts").select("*")
+        
+        if group_url:
+            query = query.eq("group_url", group_url)
+        
+        if search:
+            query = query.or_(f"title.ilike.%{search}%,text.ilike.%{search}%")
+        
+        if only_new:
+            query = query.eq("notified", False)
+        
+        query = query.order("scraped_at", desc=True)
+        query = query.range(offset, offset + limit - 1)
+        
+        result = query.execute()
+        return result.data
+    except Exception as e:
+        print(f"Error getting posts: {e}")
+        raise
+
+
+def get_post_count(
+    group_url: Optional[str] = None,
+    search: Optional[str] = None,
+    only_new: bool = False
+) -> int:
+    """Get total count of posts matching the filters."""
+    try:
+        supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        query = supabase.table("posts").select("id", count="exact")
+        
+        if group_url:
+            query = query.eq("group_url", group_url)
+        
+        if search:
+            query = query.or_(f"title.ilike.%{search}%,text.ilike.%{search}%")
+        
+        if only_new:
+            query = query.eq("notified", False)
+        
+        result = query.execute()
+        return result.count if result.count else 0
+    except Exception as e:
+        print(f"Error getting post count: {e}")
+        raise
 
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         """Handle GET requests."""
-        # Enable CORS
-        self.send_response(200)
-        self.send_header('Content-type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', '*')
-        self.end_headers()
-        
         try:
             # Parse URL and query parameters
             parsed_url = urlparse(self.path)
@@ -62,9 +115,23 @@ class handler(BaseHTTPRequestHandler):
                 "offset": offset
             }
             
+            # Send success response
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+            self.send_header('Access-Control-Allow-Headers', '*')
+            self.end_headers()
+            
             self.wfile.write(json.dumps(response).encode())
             
         except Exception as e:
+            # Send error response
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            
             error_response = {"error": str(e)}
             self.wfile.write(json.dumps(error_response).encode())
     
