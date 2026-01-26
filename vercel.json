@@ -1,11 +1,18 @@
 {
+  "version": 2,
   "buildCommand": "cd frontend && npm install && npm run build",
   "outputDirectory": "frontend/dist",
   "framework": "vite",
-  "rewrites": [
+  "installCommand": "cd frontend && npm install",
+  "devCommand": "cd frontend && npm run dev",
+  "routes": [
     {
-      "source": "/api/:path*",
-      "destination": "https://your-backend-url.onrender.com/api/:path*"
+      "src": "/api/(.*)",
+      "dest": "https://work-notifier-backend.onrender.com/api/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/frontend/dist/$1"
     }
   ]
 }
