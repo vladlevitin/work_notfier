@@ -35,12 +35,13 @@ test_*.html
 *.md
 !README.md
 
-# Backend folder (we use api/ instead)
+# Backend folder (FastAPI - not used on Vercel)
 backend/
 
 # Local env files
 .env
 .env.local
+.env.vercel
 
 # Database files
 *.db
@@ -52,6 +53,11 @@ backend/
 
 # SQL files
 *.sql
+
+# Temp files
+temp_*.txt
+add_env_vars.ps1
+set_vercel_env.ps1
 
 # Other projects
 tinder_automation/
