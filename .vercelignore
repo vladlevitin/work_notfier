@@ -1,0 +1,58 @@
+# Vercel Ignore - exclude large files from deployment
+
+# Edge driver (not needed on Vercel)
+edgedriver/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Local scripts (not needed on Vercel)
+main.py
+scraper.py
+browser_manager.py
+storage_manager.py
+email_notifier.py
+create_tables.py
+setup_database.py
+database.py
+supabase_db.py
+config.py
+
+# Test files
+test_*.py
+test_*.html
+
+# Documentation
+*.md
+!README.md
+
+# Backend folder (we use api/ instead)
+backend/
+
+# Local env files
+.env
+.env.local
+
+# Database files
+*.db
+*.db-journal
+
+# Batch scripts
+*.bat
+*.ps1
+
+# SQL files
+*.sql
+
+# Other projects
+tinder_automation/
+vlimplement/
