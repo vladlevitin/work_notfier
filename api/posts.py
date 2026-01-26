@@ -27,6 +27,12 @@ def get_posts(
             os.environ.get("SUPABASE_KEY")
         )
         
+        # Strip any whitespace or line endings (PowerShell issue workaround)
+        if supabase_url:
+            supabase_url = supabase_url.strip().strip('"').strip("'").strip()
+        if supabase_key:
+            supabase_key = supabase_key.strip().strip('"').strip("'").strip()
+        
         if not supabase_url or not supabase_key:
             raise ValueError("Environment variables not available")
         
@@ -68,6 +74,12 @@ def get_post_count(
             os.environ.get("SUPABASE_SERVICE_KEY") or
             os.environ.get("SUPABASE_KEY")
         )
+        
+        # Strip any whitespace or line endings (PowerShell issue workaround)
+        if supabase_url:
+            supabase_url = supabase_url.strip().strip('"').strip("'").strip()
+        if supabase_key:
+            supabase_key = supabase_key.strip().strip('"').strip("'").strip()
         
         if not supabase_url or not supabase_key:
             raise ValueError("Environment variables not available")

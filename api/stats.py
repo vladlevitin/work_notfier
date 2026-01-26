@@ -20,6 +20,12 @@ def get_stats() -> dict:
             os.environ.get("SUPABASE_KEY")
         )
         
+        # Strip any whitespace or line endings (PowerShell issue workaround)
+        if supabase_url:
+            supabase_url = supabase_url.strip().strip('"').strip("'").strip()
+        if supabase_key:
+            supabase_key = supabase_key.strip().strip('"').strip("'").strip()
+        
         # Debug: Check if env vars are loaded
         if not supabase_url or not supabase_key:
             # List all available env vars for debugging
