@@ -6,22 +6,27 @@ import os
 from typing import Optional
 from supabase import create_client, Client
 
-# Initialize Supabase
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = (
-    os.getenv("SUPABASE_SERVICE_KEY") or 
-    os.getenv("SUPABASE_SECRET_KEY") or 
-    os.getenv("SUPABASE_KEY")
-)
 
 def get_stats() -> dict:
     """Get database statistics."""
     try:
-        # Debug: Check if env vars are loaded
-        if not SUPABASE_URL or not SUPABASE_KEY:
-            raise ValueError(f"Environment variables missing: URL={SUPABASE_URL is not None}, KEY={SUPABASE_KEY is not None}")
+        # Load environment variables at runtime (inside the function)
+        supabase_url = os.getenv("SUPABASE_URL") or os.environ.get("SUPABASE_URL")
+        supabase_key = (
+            os.getenv("SUPABASE_SERVICE_KEY") or 
+            os.getenv("SUPABASE_SECRET_KEY") or 
+            os.getenv("SUPABASE_KEY") or
+            os.environ.get("SUPABASE_SERVICE_KEY") or
+            os.environ.get("SUPABASE_KEY")
+        )
         
-        supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        # Debug: Check if env vars are loaded
+        if not supabase_url or not supabase_key:
+            # List all available env vars for debugging
+            env_vars = {k: v[:20] + "..." if len(v) > 20 else v for k, v in os.environ.items() if "SUPABASE" in k}
+            raise ValueError(f"Environment variables missing: URL={supabase_url is not None}, KEY={supabase_key is not None}, Available: {env_vars}")
+        
+        supabase: Client = create_client(supabase_url, supabase_key)
         
         # Total posts
         total_result = supabase.table("posts").select("id", count="exact").execute()

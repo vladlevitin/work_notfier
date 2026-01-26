@@ -7,14 +7,6 @@ import os
 from typing import Optional
 from supabase import create_client, Client
 
-# Initialize Supabase
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = (
-    os.getenv("SUPABASE_SERVICE_KEY") or 
-    os.getenv("SUPABASE_SECRET_KEY") or 
-    os.getenv("SUPABASE_KEY")
-)
-
 
 def get_posts(
     limit: int = 100,
@@ -25,7 +17,20 @@ def get_posts(
 ) -> list[dict]:
     """Retrieve posts from the database with optional filtering."""
     try:
-        supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        # Load environment variables at runtime
+        supabase_url = os.getenv("SUPABASE_URL") or os.environ.get("SUPABASE_URL")
+        supabase_key = (
+            os.getenv("SUPABASE_SERVICE_KEY") or 
+            os.getenv("SUPABASE_SECRET_KEY") or 
+            os.getenv("SUPABASE_KEY") or
+            os.environ.get("SUPABASE_SERVICE_KEY") or
+            os.environ.get("SUPABASE_KEY")
+        )
+        
+        if not supabase_url or not supabase_key:
+            raise ValueError("Environment variables not available")
+        
+        supabase: Client = create_client(supabase_url, supabase_key)
         query = supabase.table("posts").select("*")
         
         if group_url:
@@ -54,7 +59,20 @@ def get_post_count(
 ) -> int:
     """Get total count of posts matching the filters."""
     try:
-        supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        # Load environment variables at runtime
+        supabase_url = os.getenv("SUPABASE_URL") or os.environ.get("SUPABASE_URL")
+        supabase_key = (
+            os.getenv("SUPABASE_SERVICE_KEY") or 
+            os.getenv("SUPABASE_SECRET_KEY") or 
+            os.getenv("SUPABASE_KEY") or
+            os.environ.get("SUPABASE_SERVICE_KEY") or
+            os.environ.get("SUPABASE_KEY")
+        )
+        
+        if not supabase_url or not supabase_key:
+            raise ValueError("Environment variables not available")
+        
+        supabase: Client = create_client(supabase_url, supabase_key)
         query = supabase.table("posts").select("id", count="exact")
         
         if group_url:
