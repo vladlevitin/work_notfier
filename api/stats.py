@@ -17,6 +17,10 @@ SUPABASE_KEY = (
 def get_stats() -> dict:
     """Get database statistics."""
     try:
+        # Debug: Check if env vars are loaded
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            raise ValueError(f"Environment variables missing: URL={SUPABASE_URL is not None}, KEY={SUPABASE_KEY is not None}")
+        
         supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
         
         # Total posts
