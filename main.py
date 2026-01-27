@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 from pathlib import Path
+from datetime import datetime
 
 from selenium import webdriver
 from selenium.webdriver.edge.options import Options
 from selenium.webdriver.edge.service import Service
 
-from browser_manager import get_edge_binary_path, prepare_browser_profile
-from supabase_db import save_posts, mark_as_notified
-from email_notifier import send_email_notification
-from scraper import filter_posts_by_keywords, print_keywords, print_posts, scrape_facebook_group
-from config import FACEBOOK_GROUPS, SCROLL_STEPS_PER_GROUP
-from datetime import datetime
+# Import from new structure
+from src.scraper import create_driver, scrape_facebook_group, filter_posts_by_keywords, print_posts
+from src.database import save_posts, mark_as_notified
+from src.notifications import send_email_notification
+from config.settings import load_facebook_groups, KEYWORDS
 
 
 def main() -> int:
@@ -21,35 +21,24 @@ def main() -> int:
     # Display start info
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print("\n" + "="*80)
-    print("FACEBOOK WORK NOTIFIER - Starting...")
-    print(f"Timestamp: {timestamp}")
+    print("🚗 FACEBOOK WORK NOTIFIER")
+    print(f"📅 Started: {timestamp}")
     print("="*80)
     
-    # Setup browser profile
-    user_data_dir = Path(__file__).resolve().parent / "edge_profile"
-    if not prepare_browser_profile(user_data_dir):
+    # Load Facebook groups from config
+    facebook_groups = load_facebook_groups()
+    
+    if not facebook_groups:
+        print("❌ No enabled Facebook groups found in config/groups.json")
         return 1
-
-    # Check driver exists
-    driver_path = Path(__file__).resolve().parent / "edgedriver" / "msedgedriver.exe"
-    if not driver_path.exists():
-        print("Edge driver not found:", driver_path)
-        return 1
-
-    # Configure Edge browser
-    edge_binary = get_edge_binary_path()
-    options = Options()
-    options.use_chromium = True
-    options.binary_location = str(edge_binary)
-    options.add_argument(f"--user-data-dir={user_data_dir}")
-    options.add_argument("--no-first-run")
-    options.add_argument("--no-default-browser-check")
-    options.add_argument("--disable-extensions")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--remote-debugging-port=0")
-
-    service = Service(executable_path=str(driver_path))
-    driver = webdriver.Edge(service=service, options=options)
+    
+    print(f"\n📋 Loaded {len(facebook_groups)} enabled groups from config:")
+    for idx, group in enumerate(facebook_groups, 1):
+        print(f"  {idx}. {group['name']}")
+    
+    # Create browser driver
+    print("\n🌐 Starting browser...")
+    driver = create_driver()
 
     all_scraped_posts = []
     all_new_posts = []
@@ -58,15 +47,19 @@ def main() -> int:
 
     try:
         # Loop through all Facebook groups from config
-        print(f"\nWill scrape {len(FACEBOOK_GROUPS)} Facebook groups ({SCROLL_STEPS_PER_GROUP} scrolls each)")
-        
-        for idx, group_url in enumerate(FACEBOOK_GROUPS, 1):
+        for idx, group_config in enumerate(facebook_groups, 1):
+            group_name = group_config['name']
+            group_url = group_config['url']
+            scroll_steps = group_config.get('scroll_steps', 5)
+            
             print(f"\n{'='*80}")
-            print(f"[{idx}/{len(FACEBOOK_GROUPS)}] Scraping group: {group_url}")
+            print(f"[{idx}/{len(facebook_groups)}] Scraping: {group_name}")
+            print(f"📍 URL: {group_url}")
+            print(f"📜 Scrolls: {scroll_steps}")
             print(f"{'='*80}")
             
             # Scrape Facebook group - get ALL posts
-            posts = scrape_facebook_group(driver, group_url, scroll_steps=SCROLL_STEPS_PER_GROUP)
+            posts = scrape_facebook_group(driver, group_url, scroll_steps=scroll_steps)
             all_scraped_posts.extend(posts)
             
             print(f"\n✅ Scraped {len(posts)} posts from this group")
@@ -100,19 +93,19 @@ def main() -> int:
         print(f"\n{'='*80}")
         print(f"SUMMARY")
         print(f"{'='*80}")
-        print(f"Total posts scraped: {len(all_scraped_posts)}")
-        print(f"New posts saved to database: {len(all_new_posts)}")
-        print(f"Posts matching keywords: {len(all_relevant_posts)}")
-        print(f"NEW relevant posts for notification: {len(new_relevant_posts)}")
+        print(f"📊 Total posts scraped: {len(all_scraped_posts)}")
+        print(f"✨ New posts saved to database: {len(all_new_posts)}")
+        print(f"🔍 Posts matching keywords: {len(all_relevant_posts)}")
+        print(f"📧 NEW relevant posts for notification: {len(new_relevant_posts)}")
         
-        print_keywords()
+        print(f"\n🔑 Keywords: {', '.join(KEYWORDS[:10])}{'...' if len(KEYWORDS) > 10 else ''}")
         
         if new_relevant_posts:
             print_posts(new_relevant_posts, "New relevant posts for notification")
             
             # Send email notification
             print(f"\n📧 Sending email notification with {len(new_relevant_posts)} new matching posts...")
-            send_email_notification(new_relevant_posts, FACEBOOK_GROUPS[0])
+            send_email_notification(new_relevant_posts, facebook_groups[0]['url'])
             
             # Mark posts as notified
             post_ids = [p["post_id"] for p in new_relevant_posts]
