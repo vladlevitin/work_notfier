@@ -8,13 +8,6 @@
       "description": "Group will be auto-named when first scraped"
     },
     {
-      "name": "Småjobber i Oslo Akershus (snekker tjenester. Hagearbeid. Husvask)",
-      "url": "https://www.facebook.com/groups/352567911457793",
-      "enabled": true,
-      "scroll_steps": 5,
-      "description": "Carpentry, garden work, and house cleaning jobs in Oslo/Akershus"
-    },
-    {
       "name": "Facebook Group 883554088400768",
       "url": "https://www.facebook.com/groups/883554088400768/",
       "enabled": true,
