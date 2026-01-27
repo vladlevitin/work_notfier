@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 
 from scraper import Post
 from ai_processor import process_post_with_ai, should_process_with_ai
+from timestamp_parser import parse_facebook_timestamp
 
 # Load environment variables
 load_dotenv()
@@ -91,12 +92,16 @@ def save_post(post: Post, use_ai: bool = True) -> bool:
         print(f"  ✅ AI extracted: {ai_data['category']} @ {ai_data['location']}")
     
     try:
+        # Parse Facebook timestamp to proper datetime
+        posted_at = parse_facebook_timestamp(post["timestamp"])
+        
         insert_data = {
             "post_id": post["post_id"],
             "title": post["title"],
             "text": post["text"],
             "url": post["url"],
             "timestamp": post["timestamp"],
+            "posted_at": posted_at.isoformat() if posted_at else None,
             "group_name": post["group_name"],
             "group_url": post["group_url"],
             "notified": False
