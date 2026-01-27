@@ -14,12 +14,14 @@ from selenium.webdriver.edge.options import Options
 from selenium.webdriver.edge.service import Service
 
 # Import from new structure
-from src.scraper import scrape_facebook_group
-from src.database import save_post, post_exists
-from config.settings import load_facebook_groups
+from src.scraper import scrape_facebook_group, filter_posts_by_keywords
+from src.database import save_post, post_exists, mark_as_notified
+from src.notifications import send_email_notification
+from config.settings import load_facebook_groups, KEYWORDS
 
 # Configuration
 CHECK_INTERVAL_MINUTES = 10  # Wait between cycles (10 minutes recommended for full scrape)
+INSTANT_EMAIL_NOTIFICATIONS = True  # Send email for matching new posts immediately
 
 
 def create_driver():
@@ -62,6 +64,8 @@ def monitor_groups():
     
     print(f"\n⏱️  Check interval: {CHECK_INTERVAL_MINUTES} minutes")
     print(f"📜 Scraping mode: FULL (all posts from each group)")
+    print(f"📧 Instant notifications: {'ENABLED' if INSTANT_EMAIL_NOTIFICATIONS else 'DISABLED'}")
+    print(f"🔑 Monitoring keywords: {', '.join(KEYWORDS[:8])}{'...' if len(KEYWORDS) > 8 else ''}")
     print("\n" + "="*80)
     print("🚀 Starting monitoring loop... (Press Ctrl+C to stop)")
     print("="*80)
@@ -84,6 +88,7 @@ def monitor_groups():
             total_scraped = 0
             total_new = 0
             total_existing = 0
+            total_notified = 0  # Track instant notifications sent
             
             # Check each enabled group
             for group_idx, group_config in enumerate(facebook_groups, 1):
@@ -105,9 +110,11 @@ def monitor_groups():
                     total_scraped += len(posts)
                     print(f"   📊 Scraped {len(posts)} posts")
                     
-                    # Check and save only NEW posts (no keyword filtering)
+                    # Check and save only NEW posts
                     new_count = 0
                     existing_count = 0
+                    notified_count = 0
+                    new_posts_to_notify = []  # Collect matching posts for notification
                     
                     for post in posts:
                         # Check if post already exists in database
@@ -118,9 +125,32 @@ def monitor_groups():
                             if save_post(post, use_ai=True):
                                 new_count += 1
                                 print(f"   ✨ NEW: {post['title'][:60]}...")
+                                
+                                # Check if post matches notification criteria (keywords)
+                                if INSTANT_EMAIL_NOTIFICATIONS:
+                                    matching_posts = filter_posts_by_keywords([post], KEYWORDS)
+                                    if matching_posts:
+                                        new_posts_to_notify.append(post)
+                                        print(f"      📧 MATCHES CRITERIA - Will notify!")
+                    
+                    # Send instant email notification for matching posts
+                    if INSTANT_EMAIL_NOTIFICATIONS and new_posts_to_notify:
+                        try:
+                            print(f"\n   📧 Sending instant notification for {len(new_posts_to_notify)} matching posts...")
+                            send_email_notification(new_posts_to_notify, group_url)
+                            
+                            # Mark as notified
+                            post_ids = [p["post_id"] for p in new_posts_to_notify]
+                            mark_as_notified(post_ids)
+                            
+                            notified_count = len(new_posts_to_notify)
+                            print(f"   ✅ Email sent successfully!")
+                        except Exception as e:
+                            print(f"   ⚠️  Email notification failed: {e}")
                     
                     total_new += new_count
                     total_existing += existing_count
+                    total_notified += notified_count
                     
                     if new_count > 0:
                         print(f"   ✅ Saved {new_count} new posts to database")
@@ -140,6 +170,7 @@ def monitor_groups():
             print(f"{'='*80}")
             print(f"   Posts scraped: {total_scraped}")
             print(f"   ✨ New posts saved: {total_new}")
+            print(f"   📧 Email notifications sent: {total_notified}")
             print(f"   ⏭️  Already in DB: {total_existing}")
             print(f"   ⏱️  Duration: {cycle_duration:.1f}s")
             
