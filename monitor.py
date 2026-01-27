@@ -19,8 +19,7 @@ from src.database import save_post, post_exists
 from config.settings import load_facebook_groups
 
 # Configuration
-CHECK_INTERVAL_MINUTES = 5  # Wait between cycles
-SCROLL_STEPS_FOR_MONITORING = 1  # Just check recent posts (top of feed)
+CHECK_INTERVAL_MINUTES = 10  # Wait between cycles (10 minutes recommended for full scrape)
 
 
 def create_driver():
@@ -62,7 +61,7 @@ def monitor_groups():
         print(f"  {idx}. {group['name']}")
     
     print(f"\n⏱️  Check interval: {CHECK_INTERVAL_MINUTES} minutes")
-    print(f"📜 Scrolls per check: {SCROLL_STEPS_FOR_MONITORING} (recent posts only)")
+    print(f"📜 Scraping mode: FULL (all posts from each group)")
     print("\n" + "="*80)
     print("🚀 Starting monitoring loop... (Press Ctrl+C to stop)")
     print("="*80)
@@ -90,43 +89,46 @@ def monitor_groups():
             for group_idx, group_config in enumerate(facebook_groups, 1):
                 group_name = group_config['name']
                 group_url = group_config['url']
+                scroll_steps = group_config.get('scroll_steps', 5)  # Use config value
                 
-                print(f"\n[{group_idx}/{len(facebook_groups)}] 🔍 Checking: {group_name}")
+                print(f"\n[{group_idx}/{len(facebook_groups)}] 🔍 Scraping: {group_name}")
+                print(f"   📜 Scrolls: {scroll_steps}")
                 
                 try:
-                    # Scrape recent posts (minimal scrolling)
+                    # Scrape ALL posts from the group (full scrape)
                     posts = scrape_facebook_group(
                         driver, 
                         group_url, 
-                        scroll_steps=SCROLL_STEPS_FOR_MONITORING
+                        scroll_steps=scroll_steps
                     )
                     
                     total_scraped += len(posts)
-                    print(f"   📊 Found {len(posts)} posts")
+                    print(f"   📊 Scraped {len(posts)} posts")
                     
-                    # Check and save only new posts
+                    # Check and save only NEW posts (no keyword filtering)
                     new_count = 0
                     existing_count = 0
                     
                     for post in posts:
+                        # Check if post already exists in database
                         if post_exists(post["post_id"]):
                             existing_count += 1
                         else:
-                            # New post! Save it with AI processing
+                            # New post! Save it (with AI processing for category/location)
                             if save_post(post, use_ai=True):
                                 new_count += 1
-                                print(f"   ✨ NEW: {post['title'][:50]}...")
+                                print(f"   ✨ NEW: {post['title'][:60]}...")
                     
                     total_new += new_count
                     total_existing += existing_count
                     
                     if new_count > 0:
-                        print(f"   ✅ Saved {new_count} new posts")
+                        print(f"   ✅ Saved {new_count} new posts to database")
                     else:
                         print(f"   ⏭️  No new posts (all {existing_count} already in DB)")
                 
                 except Exception as e:
-                    print(f"   ❌ Error: {e}")
+                    print(f"   ❌ Error scraping group: {e}")
                     continue
             
             # Cycle summary
