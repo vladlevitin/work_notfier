@@ -223,6 +223,23 @@ body {
   border: 1px solid #d2e3fc;
 }
 
+.location-tag {
+  margin-top: 0.5rem;
+}
+
+.location-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: #fef7e0;
+  color: #b8860b;
+  padding: 0.25rem 0.75rem;
+  border-radius: 16px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid #fce8a1;
+}
+
 .notified-badge {
   background: var(--success-color);
   color: white;

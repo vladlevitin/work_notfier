@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
 from scraper import Post
+from ai_processor import process_post_with_ai, should_process_with_ai
 
 # Load environment variables
 load_dotenv()
@@ -28,29 +29,69 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
-def post_exists(post_id: str) -> bool:
-    """Check if a post already exists in the database."""
+def get_existing_post(post_id: str) -> Optional[Dict]:
+    """
+    Get existing post data from the database.
+    Returns post data if exists, None otherwise.
+    """
     if post_id == "unknown":
-        return False
+        return None
     
     try:
-        result = supabase.table("posts").select("id").eq("post_id", post_id).execute()
-        return len(result.data) > 0
+        result = supabase.table("posts").select("*").eq("post_id", post_id).execute()
+        return result.data[0] if result.data else None
     except Exception as e:
         print(f"Error checking if post exists: {e}")
-        return False
+        return None
 
 
-def save_post(post: Post) -> bool:
+def post_exists(post_id: str) -> bool:
+    """Check if a post already exists in the database."""
+    return get_existing_post(post_id) is not None
+
+
+def save_post(post: Post, use_ai: bool = True) -> bool:
     """
-    Save a post to the database.
-    Returns True if the post was newly added, False if it already existed.
+    Save a post to the database with AI processing.
+    
+    Args:
+        post: Post data from scraper
+        use_ai: Whether to use AI to extract category/location (default: True)
+    
+    Returns:
+        True if the post was newly added, False if it already existed.
     """
-    if post_exists(post["post_id"]):
-        return False
+    # Check if post already exists and get existing data
+    existing = get_existing_post(post["post_id"])
+    
+    if existing:
+        # Post exists - check if we need to update with AI processing
+        if use_ai and should_process_with_ai(post["post_id"], existing):
+            print(f"  📊 Post exists but not AI-processed, processing now...")
+            ai_data = process_post_with_ai(post["title"], post["text"], post["post_id"])
+            
+            try:
+                supabase.table("posts").update({
+                    "category": ai_data["category"],
+                    "location": ai_data["location"],
+                    "ai_features": ai_data["ai_features"],
+                    "ai_processed": ai_data["ai_processed"]
+                }).eq("post_id", post["post_id"]).execute()
+                print(f"  ✅ Updated with AI: {ai_data['category']} @ {ai_data['location']}")
+            except Exception as e:
+                print(f"  ❌ Error updating AI data: {e}")
+        
+        return False  # Post already existed
+    
+    # New post - process with AI if enabled
+    ai_data = None
+    if use_ai:
+        print(f"  🤖 Processing new post with AI...")
+        ai_data = process_post_with_ai(post["title"], post["text"], post["post_id"])
+        print(f"  ✅ AI extracted: {ai_data['category']} @ {ai_data['location']}")
     
     try:
-        supabase.table("posts").insert({
+        insert_data = {
             "post_id": post["post_id"],
             "title": post["title"],
             "text": post["text"],
@@ -59,7 +100,18 @@ def save_post(post: Post) -> bool:
             "group_name": post["group_name"],
             "group_url": post["group_url"],
             "notified": False
-        }).execute()
+        }
+        
+        # Add AI-extracted data if available
+        if ai_data:
+            insert_data.update({
+                "category": ai_data["category"],
+                "location": ai_data["location"],
+                "ai_features": ai_data["ai_features"],
+                "ai_processed": ai_data["ai_processed"]
+            })
+        
+        supabase.table("posts").insert(insert_data).execute()
         
         return True
     except Exception as e:

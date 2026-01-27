@@ -12,6 +12,9 @@ export interface Post {
   group_url: string;
   scraped_at: string;
   notified: number;
+  category?: string;
+  location?: string;
+  ai_processed?: boolean;
 }
 
 export interface PostsResponse {
@@ -33,7 +36,9 @@ export const api = {
     offset: number = 0,
     groupUrl?: string,
     search?: string,
-    onlyNew: boolean = false
+    onlyNew: boolean = false,
+    category?: string,
+    location?: string
   ): Promise<PostsResponse> {
     const params = new URLSearchParams({
       limit: limit.toString(),
@@ -43,6 +48,8 @@ export const api = {
     if (groupUrl) params.append('group_url', groupUrl);
     if (search) params.append('search', search);
     if (onlyNew) params.append('only_new', 'true');
+    if (category) params.append('category', category);
+    if (location) params.append('location', location);
     
     const response = await fetch(`${API_BASE}/posts?${params}`);
     if (!response.ok) {

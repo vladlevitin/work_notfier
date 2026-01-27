@@ -16,6 +16,8 @@ export function PostsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [searchFilter, setSearchFilter] = useState('');
   const [groupFilter, setGroupFilter] = useState<string>('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('');
+  const [locationFilter, setLocationFilter] = useState<string>('');
   const [showOnlyNew, setShowOnlyNew] = useState(false);
   
   const loadingRef = useRef(false);
@@ -44,7 +46,9 @@ export function PostsPage() {
         currentOffset,
         groupFilter || undefined,
         searchFilter || undefined,
-        showOnlyNew
+        showOnlyNew,
+        categoryFilter || undefined,
+        locationFilter || undefined
       );
       
       if (reset) {
@@ -85,7 +89,7 @@ export function PostsPage() {
   // Reload when filters change
   useEffect(() => {
     loadPosts(true);
-  }, [groupFilter, searchFilter, showOnlyNew]);
+  }, [groupFilter, searchFilter, showOnlyNew, categoryFilter, locationFilter]);
 
   // Debounced search
   const handleSearchChange = (value: string) => {
@@ -140,13 +144,42 @@ export function PostsPage() {
     }
   };
 
-  // Get unique groups for filter dropdown
+  // Get unique groups, categories, and locations for filter dropdowns
   const uniqueGroups = stats?.by_group.map(g => ({ name: g.group, url: '' })) || [];
+  
+  // Get unique categories from posts
+  const uniqueCategories = Array.from(new Set(posts.map(p => p.category).filter(Boolean)));
+  
+  // Get unique locations from posts
+  const uniqueLocations = Array.from(new Set(posts.map(p => p.location).filter(Boolean)));
 
-  // Categorize post based on keywords
-  const getCategory = (title: string, text: string) => {
-    const content = (title + ' ' + text).toLowerCase();
+  // Get category display with icon (fallback for non-AI processed posts)
+  const getCategoryDisplay = (post: Post) => {
+    if (post.category) {
+      // Use AI-extracted category
+      const categoryIcons: Record<string, string> = {
+        'Transport': '🚚',
+        'Moving': '🚚',
+        'Painting': '🎨',
+        'Renovation': '🎨',
+        'Cleaning': '🧹',
+        'Garden': '🧹',
+        'Plumbing': '🔧',
+        'Electrical': '🔧',
+        'Assembly': '🪑',
+        'Furniture': '🪑',
+        'General': '📦'
+      };
+      
+      const icon = Object.entries(categoryIcons).find(([key]) => 
+        post.category?.includes(key)
+      )?.[1] || '📦';
+      
+      return { icon, name: post.category };
+    }
     
+    // Fallback: keyword-based categorization for old posts
+    const content = (post.title + ' ' + post.text).toLowerCase();
     if (content.match(/(flytte|bære|transport|frakte|hente|kjøre|bil|henger)/)) return { icon: '🚚', name: 'Transport / Moving' };
     if (content.match(/(male|sparkle|pusse|oppussing|renovere|snekker|gulv|vegg)/)) return { icon: '🎨', name: 'Painting / Renovation' };
     if (content.match(/(vask|rengjøring|utvask|hage|klippe|måke|snø)/)) return { icon: '🧹', name: 'Cleaning / Garden' };
@@ -209,6 +242,32 @@ export function PostsPage() {
             ))}
           </select>
         </div>
+
+        <div className="filter-group">
+          <label>Category</label>
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+          >
+            <option value="">All Categories</option>
+            {uniqueCategories.map(cat => (
+              <option key={cat} value={cat}>{cat}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="filter-group">
+          <label>Location</label>
+          <select
+            value={locationFilter}
+            onChange={(e) => setLocationFilter(e.target.value)}
+          >
+            <option value="">All Locations</option>
+            {uniqueLocations.map(loc => (
+              <option key={loc} value={loc}>{loc}</option>
+            ))}
+          </select>
+        </div>
         
         <div className="filter-group checkbox">
           <label>
@@ -262,7 +321,7 @@ export function PostsPage() {
                   {/* Category Tag */}
                   <div className="category-tag">
                     {(() => {
-                      const cat = getCategory(post.title, post.text);
+                      const cat = getCategoryDisplay(post);
                       return (
                         <span className="category-badge">
                           {cat.icon} {cat.name}
@@ -270,6 +329,15 @@ export function PostsPage() {
                       );
                     })()}
                   </div>
+
+                  {/* Location Tag */}
+                  {post.location && (
+                    <div className="location-tag">
+                      <span className="location-badge">
+                        📍 {post.location}
+                      </span>
+                    </div>
+                  )}
 
                   {post.notified === 1 && (
                     <span className="notified-badge">✅ Notified</span>

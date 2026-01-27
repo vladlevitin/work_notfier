@@ -38,6 +38,8 @@ export default async function handler(
     const groupUrl = req.query.group_url as string | undefined;
     const search = req.query.search as string | undefined;
     const onlyNew = req.query.only_new === 'true';
+    const category = req.query.category as string | undefined;
+    const location = req.query.location as string | undefined;
 
     // Build query for posts
     let query = supabase.from('posts').select('*');
@@ -52,6 +54,14 @@ export default async function handler(
 
     if (onlyNew) {
       query = query.eq('notified', false);
+    }
+
+    if (category) {
+      query = query.eq('category', category);
+    }
+
+    if (location) {
+      query = query.ilike('location', `%${location}%`);
     }
 
     query = query.order('scraped_at', { ascending: false });
@@ -74,6 +84,14 @@ export default async function handler(
 
     if (onlyNew) {
       countQuery = countQuery.eq('notified', false);
+    }
+
+    if (category) {
+      countQuery = countQuery.eq('category', category);
+    }
+
+    if (location) {
+      countQuery = countQuery.ilike('location', `%${location}%`);
     }
 
     const { count, error: countError } = await countQuery;
