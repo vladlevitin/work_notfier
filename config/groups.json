@@ -28,11 +28,5 @@
       "scroll_steps": 5,
       "description": "Group will be auto-named when first scraped"
     }
-  ],
-  "notes": {
-    "how_to_add_group": "Add a new group object to the 'facebook_groups' array above",
-    "required_fields": ["name", "url", "enabled"],
-    "optional_fields": ["scroll_steps", "description"],
-    "scroll_steps": "Number of times to scroll down the page (default: 5)"
-  }
+  ]
 }
