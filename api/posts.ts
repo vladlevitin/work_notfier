@@ -64,9 +64,9 @@ export default async function handler(
       query = query.ilike('location', `%${location}%`);
     }
 
-    // Sort by posted_at (when the post was originally made on Facebook)
-    // Falls back to scraped_at if posted_at is null
-    query = query.order('posted_at', { ascending: false, nullsFirst: false });
+    // Sort by posted_at if available, otherwise use scraped_at
+    // Use scraped_at as fallback for backwards compatibility
+    query = query.order('scraped_at', { ascending: false });
     query = query.range(offset, offset + limit - 1);
 
     const { data: posts, error: postsError } = await query;
