@@ -247,6 +247,11 @@ export function PostsPage() {
           <div className="posts-grid">
             {posts.map((post) => (
               <div key={post.post_id} className="post-card">
+                {/* Posted Date - Most Important */}
+                <div className="post-date">
+                  🕒 {post.timestamp}
+                </div>
+
                 <div className="post-header">
                   <h3 className="post-title">
                     <a href={post.url} target="_blank" rel="noopener noreferrer">
@@ -275,10 +280,6 @@ export function PostsPage() {
                   <div className="post-meta-item">
                     <span className="meta-label">🆔 Post ID:</span>
                     <span className="meta-value">{post.post_id}</span>
-                  </div>
-                  <div className="post-meta-item">
-                    <span className="meta-label">🕒 Posted:</span>
-                    <span className="meta-value">{post.timestamp}</span>
                   </div>
                   <div className="post-meta-item">
                     <span className="meta-label">📅 Scraped:</span>
