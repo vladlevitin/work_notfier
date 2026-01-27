@@ -91,6 +91,25 @@ export function PostsPage() {
     loadPosts(true);
   }, [groupFilter, searchFilter, showOnlyNew, categoryFilter, locationFilter]);
 
+  // Auto-refresh every 2 minutes to sync with monitoring cycles
+  useEffect(() => {
+    const AUTO_REFRESH_INTERVAL = 120000; // 2 minutes (120000ms)
+    
+    console.log('Auto-refresh enabled: Dashboard will refresh every 2 minutes');
+    
+    const intervalId = setInterval(() => {
+      console.log('Auto-refreshing dashboard...');
+      loadPosts(true);
+      loadStats();
+    }, AUTO_REFRESH_INTERVAL);
+
+    // Cleanup interval on component unmount
+    return () => {
+      console.log('Auto-refresh disabled');
+      clearInterval(intervalId);
+    };
+  }, [groupFilter, searchFilter, showOnlyNew, categoryFilter, locationFilter]);
+
   // Debounced search
   const handleSearchChange = (value: string) => {
     setSearchInput(value);
