@@ -48,7 +48,7 @@ def monitor_groups():
     Runs in an infinite loop, checking each group in cycles.
     """
     print("\n" + "="*80)
-    print("🔄 FACEBOOK WORK NOTIFIER - CONTINUOUS MONITORING")
+    print("FACEBOOK WORK NOTIFIER - CONTINUOUS MONITORING")
     print("="*80)
     
     # Load enabled groups
@@ -58,20 +58,20 @@ def monitor_groups():
         print("❌ No enabled groups found in config/groups.json")
         return
     
-    print(f"\n📋 Monitoring {len(facebook_groups)} enabled groups:")
+    print(f"\n[*] Monitoring {len(facebook_groups)} enabled groups:")
     for idx, group in enumerate(facebook_groups, 1):
         print(f"  {idx}. {group['name']}")
     
-    print(f"\n⏱️  Check interval: {CHECK_INTERVAL_MINUTES} minutes")
-    print(f"📜 Scraping mode: FULL (all posts from each group)")
-    print(f"📧 Instant notifications: {'ENABLED' if INSTANT_EMAIL_NOTIFICATIONS else 'DISABLED'}")
-    print(f"🔑 Monitoring keywords: {', '.join(KEYWORDS[:8])}{'...' if len(KEYWORDS) > 8 else ''}")
+    print(f"\n[*] Check interval: {CHECK_INTERVAL_MINUTES} minutes")
+    print(f"[*] Scraping mode: FULL (all posts from each group)")
+    print(f"[*] Instant notifications: {'ENABLED' if INSTANT_EMAIL_NOTIFICATIONS else 'DISABLED'}")
+    print(f"[*] Monitoring keywords: {', '.join(KEYWORDS[:8])}{'...' if len(KEYWORDS) > 8 else ''}")
     print("\n" + "="*80)
-    print("🚀 Starting monitoring loop... (Press Ctrl+C to stop)")
+    print("[*] Starting monitoring loop... (Press Ctrl+C to stop)")
     print("="*80)
     
     # Create browser driver once (reuse across cycles)
-    print("\n🌐 Starting browser...")
+    print("\n[*] Starting browser...")
     driver = create_driver()
     
     cycle_number = 0
@@ -82,7 +82,7 @@ def monitor_groups():
             cycle_start = datetime.now()
             
             print(f"\n{'='*80}")
-            print(f"🔄 CYCLE #{cycle_number} - {cycle_start.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"CYCLE #{cycle_number} - {cycle_start.strftime('%Y-%m-%d %H:%M:%S')}")
             print(f"{'='*80}")
             
             total_scraped = 0
@@ -96,8 +96,8 @@ def monitor_groups():
                 group_url = group_config['url']
                 scroll_steps = group_config.get('scroll_steps', 5)  # Use config value
                 
-                print(f"\n[{group_idx}/{len(facebook_groups)}] 🔍 Scraping: {group_name}")
-                print(f"   📜 Scrolls: {scroll_steps}")
+                print(f"\n[{group_idx}/{len(facebook_groups)}] Scraping: {group_name}")
+                print(f"   Scrolls: {scroll_steps}")
                 
                 try:
                     # Scrape ALL posts from the group (full scrape)
@@ -108,7 +108,7 @@ def monitor_groups():
                     )
                     
                     total_scraped += len(posts)
-                    print(f"   📊 Scraped {len(posts)} posts")
+                    print(f"   [*] Scraped {len(posts)} posts")
                     
                     # Check and save only NEW posts
                     new_count = 0
@@ -124,19 +124,19 @@ def monitor_groups():
                             # New post! Save it (with AI processing for category/location)
                             if save_post(post, use_ai=True):
                                 new_count += 1
-                                print(f"   ✨ NEW: {post['title'][:60]}...")
+                                print(f"   [NEW] {post['title'][:60]}...")
                                 
                                 # Check if post matches notification criteria (keywords)
                                 if INSTANT_EMAIL_NOTIFICATIONS:
                                     matching_posts = filter_posts_by_keywords([post], KEYWORDS)
                                     if matching_posts:
                                         new_posts_to_notify.append(post)
-                                        print(f"      📧 MATCHES CRITERIA - Will notify!")
+                                        print(f"      [EMAIL] MATCHES CRITERIA - Will notify!")
                     
                     # Send instant email notification for matching posts
                     if INSTANT_EMAIL_NOTIFICATIONS and new_posts_to_notify:
                         try:
-                            print(f"\n   📧 Sending instant notification for {len(new_posts_to_notify)} matching posts...")
+                            print(f"\n   [EMAIL] Sending instant notification for {len(new_posts_to_notify)} matching posts...")
                             send_email_notification(new_posts_to_notify, group_url)
                             
                             # Mark as notified
@@ -144,21 +144,21 @@ def monitor_groups():
                             mark_as_notified(post_ids)
                             
                             notified_count = len(new_posts_to_notify)
-                            print(f"   ✅ Email sent successfully!")
+                            print(f"   [OK] Email sent successfully!")
                         except Exception as e:
-                            print(f"   ⚠️  Email notification failed: {e}")
+                            print(f"   [WARNING] Email notification failed: {e}")
                     
                     total_new += new_count
                     total_existing += existing_count
                     total_notified += notified_count
                     
                     if new_count > 0:
-                        print(f"   ✅ Saved {new_count} new posts to database")
+                        print(f"   [OK] Saved {new_count} new posts to database")
                     else:
-                        print(f"   ⏭️  No new posts (all {existing_count} already in DB)")
+                        print(f"   [SKIP] No new posts (all {existing_count} already in DB)")
                 
                 except Exception as e:
-                    print(f"   ❌ Error scraping group: {e}")
+                    print(f"   [ERROR] Scraping failed: {e}")
                     continue
             
             # Cycle summary
@@ -166,32 +166,32 @@ def monitor_groups():
             cycle_duration = (cycle_end - cycle_start).total_seconds()
             
             print(f"\n{'='*80}")
-            print(f"📊 CYCLE #{cycle_number} SUMMARY")
+            print(f"CYCLE #{cycle_number} SUMMARY")
             print(f"{'='*80}")
             print(f"   Posts scraped: {total_scraped}")
-            print(f"   ✨ New posts saved: {total_new}")
-            print(f"   📧 Email notifications sent: {total_notified}")
-            print(f"   ⏭️  Already in DB: {total_existing}")
-            print(f"   ⏱️  Duration: {cycle_duration:.1f}s")
+            print(f"   New posts saved: {total_new}")
+            print(f"   Email notifications sent: {total_notified}")
+            print(f"   Already in DB: {total_existing}")
+            print(f"   Duration: {cycle_duration:.1f}s")
             
             # Wait before next cycle
-            print(f"\n⏳ Waiting {CHECK_INTERVAL_MINUTES} minutes until next cycle...")
+            print(f"\n[*] Waiting {CHECK_INTERVAL_MINUTES} minutes until next cycle...")
             print(f"   Next check at: {datetime.now().replace(second=0, microsecond=0)}")
             print(f"   Press Ctrl+C to stop monitoring")
             
             time.sleep(CHECK_INTERVAL_MINUTES * 60)
     
     except KeyboardInterrupt:
-        print("\n\n🛑 Monitoring stopped by user")
+        print("\n\n[STOP] Monitoring stopped by user")
         print(f"   Total cycles completed: {cycle_number}")
     
     except Exception as e:
-        print(f"\n\n❌ Fatal error: {e}")
+        print(f"\n\n[ERROR] Fatal error: {e}")
     
     finally:
-        print("\n🔒 Closing browser...")
+        print("\n[*] Closing browser...")
         driver.quit()
-        print("✅ Monitoring session ended")
+        print("[OK] Monitoring session ended")
 
 
 if __name__ == "__main__":
