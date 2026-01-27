@@ -7,10 +7,17 @@ from datetime import datetime
 from typing import Optional, Dict
 from supabase import create_client, Client
 from dotenv import load_dotenv
+from typing import TypedDict
 
-from scraper import Post
-from ai_processor import process_post_with_ai, should_process_with_ai
-from timestamp_parser import parse_facebook_timestamp
+# Type definition for Post
+class Post(TypedDict):
+    post_id: str
+    title: str
+    text: str
+    url: str
+    timestamp: str
+    group_name: str
+    group_url: str
 
 # Load environment variables
 load_dotenv()
@@ -67,9 +74,14 @@ def save_post(post: Post, use_ai: bool = True) -> bool:
     
     if existing:
         # Post exists - check if we need to update with AI processing
-        if use_ai and should_process_with_ai(post["post_id"], existing):
-            print(f"  📊 Post exists but not AI-processed, processing now...")
-            ai_data = process_post_with_ai(post["title"], post["text"], post["post_id"])
+        if use_ai and not existing.get('ai_processed'):
+            try:
+                from src.ai import process_post_with_ai
+                print(f"  📊 Post exists but not AI-processed, processing now...")
+                ai_data = process_post_with_ai(post["title"], post["text"], post["post_id"])
+            except (ImportError, Exception) as e:
+                print(f"  ⚠️  AI processing not available: {e}")
+                return False
             
             try:
                 supabase.table("posts").update({
@@ -87,13 +99,23 @@ def save_post(post: Post, use_ai: bool = True) -> bool:
     # New post - process with AI if enabled
     ai_data = None
     if use_ai:
-        print(f"  🤖 Processing new post with AI...")
-        ai_data = process_post_with_ai(post["title"], post["text"], post["post_id"])
-        print(f"  ✅ AI extracted: {ai_data['category']} @ {ai_data['location']}")
+        try:
+            from src.ai import process_post_with_ai
+            print(f"  🤖 Processing new post with AI...")
+            ai_data = process_post_with_ai(post["title"], post["text"], post["post_id"])
+            print(f"  ✅ AI extracted: {ai_data['category']} @ {ai_data['location']}")
+        except ImportError:
+            print(f"  ⚠️  AI processing not available")
+        except Exception as e:
+            print(f"  ⚠️  AI processing failed: {e}")
     
     try:
         # Parse Facebook timestamp to proper datetime
-        posted_at = parse_facebook_timestamp(post["timestamp"])
+        try:
+            from src.scraper import parse_facebook_timestamp
+            posted_at = parse_facebook_timestamp(post["timestamp"])
+        except ImportError:
+            posted_at = None
         
         insert_data = {
             "post_id": post["post_id"],
