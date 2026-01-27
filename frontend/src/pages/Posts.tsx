@@ -311,33 +311,33 @@ export function PostsPage() {
                   🕒 {post.timestamp}
                 </div>
 
+                {/* Category Tag - Right after date */}
+                <div className="category-tag">
+                  {(() => {
+                    const cat = getCategoryDisplay(post);
+                    return (
+                      <span className="category-badge">
+                        {cat.icon} {cat.name}
+                      </span>
+                    );
+                  })()}
+                </div>
+
+                {/* Location Tag */}
+                {post.location && (
+                  <div className="location-tag">
+                    <span className="location-badge">
+                      📍 {post.location}
+                    </span>
+                  </div>
+                )}
+
                 <div className="post-header">
                   <h3 className="post-title">
                     <a href={post.url} target="_blank" rel="noopener noreferrer">
                       {post.title}
                     </a>
                   </h3>
-                  
-                  {/* Category Tag */}
-                  <div className="category-tag">
-                    {(() => {
-                      const cat = getCategoryDisplay(post);
-                      return (
-                        <span className="category-badge">
-                          {cat.icon} {cat.name}
-                        </span>
-                      );
-                    })()}
-                  </div>
-
-                  {/* Location Tag */}
-                  {post.location && (
-                    <div className="location-tag">
-                      <span className="location-badge">
-                        📍 {post.location}
-                      </span>
-                    </div>
-                  )}
 
                   {post.notified === 1 && (
                     <span className="notified-badge">✅ Notified</span>
