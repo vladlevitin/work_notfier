@@ -13,6 +13,20 @@
       "enabled": true,
       "scroll_steps": 5,
       "description": "Carpentry, garden work, and house cleaning jobs in Oslo/Akershus"
+    },
+    {
+      "name": "Facebook Group 883554088400768",
+      "url": "https://www.facebook.com/groups/883554088400768/",
+      "enabled": true,
+      "scroll_steps": 5,
+      "description": "Group will be auto-named when first scraped"
+    },
+    {
+      "name": "Facebook Group 397430066450170",
+      "url": "https://www.facebook.com/groups/397430066450170",
+      "enabled": true,
+      "scroll_steps": 5,
+      "description": "Group will be auto-named when first scraped"
     }
   ],
   "notes": {
