@@ -1,11 +1,11 @@
 {
   "facebook_groups": [
     {
-      "name": "Småjobber utføres og ønskes i Oslo og Viken",
-      "url": "https://www.facebook.com/groups/346441192214130",
+      "name": "Facebook Group 2014558715497143",
+      "url": "https://www.facebook.com/groups/2014558715497143",
       "enabled": true,
       "scroll_steps": 5,
-      "description": "Main group for small jobs in Oslo and Viken region"
+      "description": "Group will be auto-named when first scraped"
     },
     {
       "name": "Småjobber i Oslo Akershus (snekker tjenester. Hagearbeid. Husvask)",
