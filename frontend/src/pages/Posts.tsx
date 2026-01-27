@@ -143,6 +143,19 @@ export function PostsPage() {
   // Get unique groups for filter dropdown
   const uniqueGroups = stats?.by_group.map(g => ({ name: g.group, url: '' })) || [];
 
+  // Categorize post based on keywords
+  const getCategory = (title: string, text: string) => {
+    const content = (title + ' ' + text).toLowerCase();
+    
+    if (content.match(/(flytte|bære|transport|frakte|hente|kjøre|bil|henger)/)) return { icon: '🚚', name: 'Transport / Moving' };
+    if (content.match(/(male|sparkle|pusse|oppussing|renovere|snekker|gulv|vegg)/)) return { icon: '🎨', name: 'Painting / Renovation' };
+    if (content.match(/(vask|rengjøring|utvask|hage|klippe|måke|snø)/)) return { icon: '🧹', name: 'Cleaning / Garden' };
+    if (content.match(/(rørlegger|elektriker|strøm|vann|vvs|lys)/)) return { icon: '🔧', name: 'Plumbing / Electrical' };
+    if (content.match(/(montere|demontere|ikea|møbler|skap|seng|sofa)/)) return { icon: '🪑', name: 'Assembly / Furniture' };
+    
+    return { icon: '📦', name: 'General' };
+  };
+
   return (
     <div className="container">
       <div className="header">
@@ -240,6 +253,19 @@ export function PostsPage() {
                       {post.title}
                     </a>
                   </h3>
+                  
+                  {/* Category Tag */}
+                  <div className="category-tag">
+                    {(() => {
+                      const cat = getCategory(post.title, post.text);
+                      return (
+                        <span className="category-badge">
+                          {cat.icon} {cat.name}
+                        </span>
+                      );
+                    })()}
+                  </div>
+
                   {post.notified === 1 && (
                     <span className="notified-badge">✅ Notified</span>
                   )}
