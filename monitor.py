@@ -25,21 +25,42 @@ INSTANT_EMAIL_NOTIFICATIONS = True  # Send email for matching new posts immediat
 
 
 def create_driver():
-    """Create and return Edge WebDriver instance."""
+    """Create and return Edge WebDriver instance with robust Windows configuration."""
     driver_path = Path(__file__).resolve().parent / "edgedriver" / "msedgedriver.exe"
     user_data_dir = Path(__file__).resolve().parent / "edge_profile"
+    
+    # Create user data directory if it doesn't exist
+    user_data_dir.mkdir(parents=True, exist_ok=True)
     
     options = Options()
     options.use_chromium = True
     options.add_argument(f"--user-data-dir={user_data_dir}")
+    
+    # Critical Windows stability flags
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--disable-software-rasterizer")
+    options.add_argument("--disable-extensions")
     options.add_argument("--no-first-run")
     options.add_argument("--no-default-browser-check")
-    options.add_argument("--disable-extensions")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--remote-debugging-port=0")
+    options.add_argument("--start-maximized")
+    options.add_argument("--remote-debugging-port=9222")
+    
+    # Prevent detection
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option("useAutomationExtension", False)
     
     service = Service(executable_path=str(driver_path))
-    return webdriver.Edge(service=service, options=options)
+    
+    try:
+        driver = webdriver.Edge(service=service, options=options)
+        driver.set_page_load_timeout(30)
+        return driver
+    except Exception as e:
+        print(f"[ERROR] Failed to start browser: {e}")
+        print("[TIP] Make sure Microsoft Edge is installed and up to date")
+        raise
 
 
 def monitor_groups():
