@@ -114,41 +114,21 @@ export default async function handler(
       query = query.ilike('location', `%${location}%`);
     }
 
-    // Sort by posted_at (actual Facebook post time) - most recent first
-    // Falls back to scraped_at if posted_at doesn't exist yet
-    query = query.range(offset, offset + limit - 1);
-
-    // Try sorting by posted_at first
-    let postsResult = await query.order('posted_at', { ascending: false });
-    
-    // If posted_at column doesn't exist, fall back to scraped_at
-    if (postsResult.error && postsResult.error.message?.includes('posted_at')) {
-      console.log('posted_at column not found, falling back to scraped_at sorting');
-      query = supabase.from('posts').select('*');
-      
-      // Reapply all filters
-      if (groupUrl) query = query.eq('group_url', groupUrl);
-      if (search) query = query.or(`title.ilike.%${search}%,text.ilike.%${search}%`);
-      if (onlyNew) query = query.eq('notified', false);
-      if (category) query = query.eq('category', category);
-      if (location) query = query.ilike('location', `%${location}%`);
-      
-      query = query.order('scraped_at', { ascending: false });
-      query = query.range(offset, offset + limit - 1);
-      
-      postsResult = await query;
-    }
-
-    const { data: posts, error: postsError } = postsResult;
+    // Fetch ALL posts (without pagination) so we can sort them properly
+    // Then apply pagination manually after sorting
+    const { data: allPosts, error: postsError } = await query;
 
     if (postsError) throw postsError;
 
-    // Sort posts by parsed timestamp (most recent first)
-    const sortedPosts = (posts || []).sort((a, b) => {
+    // Sort ALL posts by parsed timestamp (most recent first)
+    const sortedAllPosts = (allPosts || []).sort((a, b) => {
       const dateA = parseFacebookTimestamp(a.timestamp || '');
       const dateB = parseFacebookTimestamp(b.timestamp || '');
       return dateB.getTime() - dateA.getTime(); // Descending order (newest first)
     });
+
+    // Apply pagination AFTER sorting
+    const sortedPosts = sortedAllPosts.slice(offset, offset + limit);
 
     // Get total count with same filters
     let countQuery = supabase.from('posts').select('*', { count: 'exact', head: true });
@@ -179,7 +159,7 @@ export default async function handler(
 
     return res.status(200).json({
       posts: sortedPosts,
-      total: count || 0,
+      total: sortedAllPosts.length, // Use actual sorted length, not DB count
       limit,
       offset,
     });
