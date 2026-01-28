@@ -65,11 +65,31 @@ export default async function handler(
     }
 
     // Sort by posted_at (actual Facebook post time) - most recent first
-    // This ensures posts from all groups are sorted chronologically
-    query = query.order('posted_at', { ascending: false });
+    // Falls back to scraped_at if posted_at doesn't exist yet
     query = query.range(offset, offset + limit - 1);
 
-    const { data: posts, error: postsError } = await query;
+    // Try sorting by posted_at first
+    let postsResult = await query.order('posted_at', { ascending: false });
+    
+    // If posted_at column doesn't exist, fall back to scraped_at
+    if (postsResult.error && postsResult.error.message?.includes('posted_at')) {
+      console.log('posted_at column not found, falling back to scraped_at sorting');
+      query = supabase.from('posts').select('*');
+      
+      // Reapply all filters
+      if (groupUrl) query = query.eq('group_url', groupUrl);
+      if (search) query = query.or(`title.ilike.%${search}%,text.ilike.%${search}%`);
+      if (onlyNew) query = query.eq('notified', false);
+      if (category) query = query.eq('category', category);
+      if (location) query = query.ilike('location', `%${location}%`);
+      
+      query = query.order('scraped_at', { ascending: false });
+      query = query.range(offset, offset + limit - 1);
+      
+      postsResult = await query;
+    }
+
+    const { data: posts, error: postsError } = postsResult;
 
     if (postsError) throw postsError;
 
