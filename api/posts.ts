@@ -1,6 +1,56 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 
+// Parse Facebook timestamp strings into Date objects
+function parseFacebookTimestamp(timestamp: string): Date {
+  const now = new Date();
+  
+  // Handle "Xh" format (X hours ago)
+  const hoursMatch = timestamp.match(/^(\d+)h$/);
+  if (hoursMatch) {
+    const hours = parseInt(hoursMatch[1]);
+    return new Date(now.getTime() - hours * 60 * 60 * 1000);
+  }
+  
+  // Handle "Xd" format (X days ago)
+  const daysMatch = timestamp.match(/^(\d+)d$/);
+  if (daysMatch) {
+    const days = parseInt(daysMatch[1]);
+    return new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+  }
+  
+  // Handle "DD Month at HH:MM" format (e.g., "24 January at 08:42")
+  const dateMatch = timestamp.match(/^(\d+)\s+(\w+)\s+at\s+(\d+):(\d+)$/);
+  if (dateMatch) {
+    const day = parseInt(dateMatch[1]);
+    const month = dateMatch[2];
+    const hour = parseInt(dateMatch[3]);
+    const minute = parseInt(dateMatch[4]);
+    
+    const monthMap: { [key: string]: number } = {
+      'January': 0, 'February': 1, 'March': 2, 'April': 3,
+      'May': 4, 'June': 5, 'July': 6, 'August': 7,
+      'September': 8, 'October': 9, 'November': 10, 'December': 11
+    };
+    
+    const monthIndex = monthMap[month];
+    if (monthIndex !== undefined) {
+      const year = now.getFullYear();
+      const date = new Date(year, monthIndex, day, hour, minute);
+      
+      // If date is in the future, it's probably from last year
+      if (date > now) {
+        date.setFullYear(year - 1);
+      }
+      
+      return date;
+    }
+  }
+  
+  // Handle "Recently" or unknown formats - return current time
+  return now;
+}
+
 export default async function handler(
   req: VercelRequest,
   res: VercelResponse
@@ -93,6 +143,13 @@ export default async function handler(
 
     if (postsError) throw postsError;
 
+    // Sort posts by parsed timestamp (most recent first)
+    const sortedPosts = (posts || []).sort((a, b) => {
+      const dateA = parseFacebookTimestamp(a.timestamp || '');
+      const dateB = parseFacebookTimestamp(b.timestamp || '');
+      return dateB.getTime() - dateA.getTime(); // Descending order (newest first)
+    });
+
     // Get total count with same filters
     let countQuery = supabase.from('posts').select('*', { count: 'exact', head: true });
 
@@ -121,7 +178,7 @@ export default async function handler(
     if (countError) throw countError;
 
     return res.status(200).json({
-      posts: posts || [],
+      posts: sortedPosts,
       total: count || 0,
       limit,
       offset,
