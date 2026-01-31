@@ -186,6 +186,26 @@ def get_post_count(
         raise
 
 
+def get_post_by_id(post_id: str) -> Optional[dict]:
+    """
+    Get a single post by its post_id.
+    
+    Args:
+        post_id: The unique post identifier
+    
+    Returns:
+        Post dictionary if found, None otherwise
+    """
+    try:
+        result = supabase.table("posts").select("*").eq("post_id", post_id).execute()
+        if result.data and len(result.data) > 0:
+            return result.data[0]
+        return None
+    except Exception as e:
+        print(f"Error getting post by id: {e}")
+        raise
+
+
 def get_stats() -> dict:
     """Get database statistics."""
     try:

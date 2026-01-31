@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api, Post, Stats } from '../api/client';
 import './Posts.css';
 
 const PAGE_SIZE = 20;
 
 export function PostsPage() {
+  const navigate = useNavigate();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -324,7 +326,11 @@ export function PostsPage() {
         <>
           <div className="posts-grid">
             {posts.map((post) => (
-              <div key={post.post_id} className="post-card">
+              <div 
+                key={post.post_id} 
+                className="post-card clickable"
+                onClick={() => navigate(`/post/${encodeURIComponent(post.post_id)}`)}
+              >
                 {/* Posted Date - Most Important */}
                 <div className="post-date">
                   🕒 {post.timestamp}
@@ -352,11 +358,7 @@ export function PostsPage() {
                 )}
 
                 <div className="post-header">
-                  <h3 className="post-title">
-                    <a href={post.url} target="_blank" rel="noopener noreferrer">
-                      {post.title}
-                    </a>
-                  </h3>
+                  <h3 className="post-title">{post.title}</h3>
 
                   {post.notified === 1 && (
                     <span className="notified-badge">✅ Notified</span>
@@ -374,29 +376,17 @@ export function PostsPage() {
                   </div>
                   <div className="post-meta-item">
                     <span className="meta-label">📍 Group:</span>
-                    <a 
-                      href={post.group_url} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="group-link"
-                    >
-                      {post.group_name}
-                    </a>
+                    <span className="group-link">{post.group_name}</span>
                   </div>
                 </div>
                 
                 <div className="post-text">
-                  {post.text}
+                  {post.text.length > 200 ? post.text.substring(0, 200) + '...' : post.text}
                 </div>
                 
-                <a 
-                  href={post.url} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="view-post-button"
-                >
-                  View on Facebook →
-                </a>
+                <div className="view-details-hint">
+                  Click to view details →
+                </div>
               </div>
             ))}
           </div>

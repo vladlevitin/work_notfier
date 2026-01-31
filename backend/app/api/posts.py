@@ -1,9 +1,9 @@
 """API endpoints for Facebook posts."""
 
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Path
 from typing import Optional
 
-from app.db import get_posts, get_post_count, get_stats
+from app.db import get_posts, get_post_count, get_stats, get_post_by_id
 
 router = APIRouter()
 
@@ -47,6 +47,22 @@ async def list_posts(
             "limit": limit,
             "offset": offset
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/posts/{post_id}")
+async def get_single_post(post_id: str = Path(..., description="The unique post identifier")):
+    """
+    Get a single post by its ID.
+    """
+    try:
+        post = get_post_by_id(post_id)
+        if not post:
+            raise HTTPException(status_code=404, detail="Post not found")
+        return {"post": post}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

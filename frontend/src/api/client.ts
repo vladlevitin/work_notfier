@@ -57,6 +57,15 @@ export const api = {
     }
     return response.json();
   },
+
+  async getPostById(postId: string): Promise<Post> {
+    const response = await fetch(`${API_BASE}/posts/${encodeURIComponent(postId)}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch post: ${response.statusText}`);
+    }
+    const data = await response.json();
+    return data.post;
+  },
   
   async getStats(): Promise<Stats> {
     const response = await fetch(`${API_BASE}/stats`);
