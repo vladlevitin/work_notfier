@@ -5,6 +5,19 @@ import { createClient } from '@supabase/supabase-js';
 function parseFacebookTimestamp(timestamp: string): Date {
   const now = new Date();
   
+  const monthMap: { [key: string]: number } = {
+    'January': 0, 'February': 1, 'March': 2, 'April': 3,
+    'May': 4, 'June': 5, 'July': 6, 'August': 7,
+    'September': 8, 'October': 9, 'November': 10, 'December': 11
+  };
+  
+  // Handle "Xm" format (X minutes ago)
+  const minutesMatch = timestamp.match(/^(\d+)m$/);
+  if (minutesMatch) {
+    const minutes = parseInt(minutesMatch[1]);
+    return new Date(now.getTime() - minutes * 60 * 1000);
+  }
+  
   // Handle "Xh" format (X hours ago)
   const hoursMatch = timestamp.match(/^(\d+)h$/);
   if (hoursMatch) {
@@ -19,19 +32,24 @@ function parseFacebookTimestamp(timestamp: string): Date {
     return new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
   }
   
+  // Handle "Yesterday at HH:MM" format
+  const yesterdayMatch = timestamp.match(/^Yesterday\s+at\s+(\d+):(\d+)$/);
+  if (yesterdayMatch) {
+    const hour = parseInt(yesterdayMatch[1]);
+    const minute = parseInt(yesterdayMatch[2]);
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setHours(hour, minute, 0, 0);
+    return yesterday;
+  }
+  
   // Handle "DD Month at HH:MM" format (e.g., "24 January at 08:42")
-  const dateMatch = timestamp.match(/^(\d+)\s+(\w+)\s+at\s+(\d+):(\d+)$/);
-  if (dateMatch) {
-    const day = parseInt(dateMatch[1]);
-    const month = dateMatch[2];
-    const hour = parseInt(dateMatch[3]);
-    const minute = parseInt(dateMatch[4]);
-    
-    const monthMap: { [key: string]: number } = {
-      'January': 0, 'February': 1, 'March': 2, 'April': 3,
-      'May': 4, 'June': 5, 'July': 6, 'August': 7,
-      'September': 8, 'October': 9, 'November': 10, 'December': 11
-    };
+  const dateTimeMatch = timestamp.match(/^(\d+)\s+(\w+)\s+at\s+(\d+):(\d+)$/);
+  if (dateTimeMatch) {
+    const day = parseInt(dateTimeMatch[1]);
+    const month = dateTimeMatch[2];
+    const hour = parseInt(dateTimeMatch[3]);
+    const minute = parseInt(dateTimeMatch[4]);
     
     const monthIndex = monthMap[month];
     if (monthIndex !== undefined) {
@@ -47,8 +65,26 @@ function parseFacebookTimestamp(timestamp: string): Date {
     }
   }
   
-  // Handle "Recently" or unknown formats - return current time
-  return now;
+  // Handle "DD Month YYYY" format (e.g., "5 May 2025")
+  const dateYearMatch = timestamp.match(/^(\d+)\s+(\w+)\s+(\d{4})$/);
+  if (dateYearMatch) {
+    const day = parseInt(dateYearMatch[1]);
+    const month = dateYearMatch[2];
+    const year = parseInt(dateYearMatch[3]);
+    
+    const monthIndex = monthMap[month];
+    if (monthIndex !== undefined) {
+      return new Date(year, monthIndex, day, 12, 0); // Default to noon
+    }
+  }
+  
+  // Handle "Recently" - treat as very recent (1 minute ago)
+  if (timestamp.toLowerCase() === 'recently') {
+    return new Date(now.getTime() - 60 * 1000);
+  }
+  
+  // Unknown formats - return a very old date so they sort to the bottom
+  return new Date(0);
 }
 
 export default async function handler(

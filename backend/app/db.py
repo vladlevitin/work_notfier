@@ -3,9 +3,83 @@
 from __future__ import annotations
 
 import os
+import re
+from datetime import datetime, timedelta
 from typing import Optional, TypedDict
 from supabase import create_client, Client
 from dotenv import load_dotenv
+
+
+def parse_facebook_timestamp(timestamp: str) -> datetime:
+    """Parse Facebook timestamp strings into datetime objects."""
+    now = datetime.now()
+    
+    month_map = {
+        'January': 1, 'February': 2, 'March': 3, 'April': 4,
+        'May': 5, 'June': 6, 'July': 7, 'August': 8,
+        'September': 9, 'October': 10, 'November': 11, 'December': 12
+    }
+    
+    # Handle "Xm" format (X minutes ago)
+    match = re.match(r'^(\d+)m$', timestamp)
+    if match:
+        minutes = int(match.group(1))
+        return now - timedelta(minutes=minutes)
+    
+    # Handle "Xh" format (X hours ago)
+    match = re.match(r'^(\d+)h$', timestamp)
+    if match:
+        hours = int(match.group(1))
+        return now - timedelta(hours=hours)
+    
+    # Handle "Xd" format (X days ago)
+    match = re.match(r'^(\d+)d$', timestamp)
+    if match:
+        days = int(match.group(1))
+        return now - timedelta(days=days)
+    
+    # Handle "Yesterday at HH:MM" format
+    match = re.match(r'^Yesterday\s+at\s+(\d+):(\d+)$', timestamp)
+    if match:
+        hour = int(match.group(1))
+        minute = int(match.group(2))
+        yesterday = now - timedelta(days=1)
+        return yesterday.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    
+    # Handle "DD Month at HH:MM" format (e.g., "24 January at 08:42")
+    match = re.match(r'^(\d+)\s+(\w+)\s+at\s+(\d+):(\d+)$', timestamp)
+    if match:
+        day = int(match.group(1))
+        month_name = match.group(2)
+        hour = int(match.group(3))
+        minute = int(match.group(4))
+        
+        month = month_map.get(month_name)
+        if month:
+            year = now.year
+            date = datetime(year, month, day, hour, minute)
+            # If date is in the future, it's from last year
+            if date > now:
+                date = datetime(year - 1, month, day, hour, minute)
+            return date
+    
+    # Handle "DD Month YYYY" format (e.g., "5 May 2025")
+    match = re.match(r'^(\d+)\s+(\w+)\s+(\d{4})$', timestamp)
+    if match:
+        day = int(match.group(1))
+        month_name = match.group(2)
+        year = int(match.group(3))
+        
+        month = month_map.get(month_name)
+        if month:
+            return datetime(year, month, day, 12, 0)
+    
+    # Handle "Recently" - treat as very recent
+    if timestamp.lower() == 'recently':
+        return now - timedelta(minutes=1)
+    
+    # Unknown formats - return very old date
+    return datetime(1970, 1, 1)
 
 # Load environment variables
 load_dotenv()
@@ -53,7 +127,7 @@ def get_posts(
         only_new: Only return posts that haven't been notified about
     
     Returns:
-        List of post dictionaries
+        List of post dictionaries sorted by Facebook timestamp (most recent first)
     """
     try:
         query = supabase.table("posts").select("*")
@@ -68,14 +142,20 @@ def get_posts(
         if only_new:
             query = query.eq("notified", False)
         
-        # Order by most recent first
-        query = query.order("scraped_at", desc=True)
-        
-        # Add pagination
-        query = query.range(offset, offset + limit - 1)
-        
+        # Fetch all matching posts (we'll sort in Python by parsed timestamp)
         result = query.execute()
-        return result.data
+        all_posts = result.data or []
+        
+        # Sort by parsed Facebook timestamp (most recent first)
+        all_posts.sort(
+            key=lambda p: parse_facebook_timestamp(p.get('timestamp', '')),
+            reverse=True
+        )
+        
+        # Apply pagination after sorting
+        paginated_posts = all_posts[offset:offset + limit]
+        
+        return paginated_posts
     except Exception as e:
         print(f"Error getting posts: {e}")
         raise

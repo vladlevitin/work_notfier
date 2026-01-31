@@ -58,91 +58,42 @@ def post_exists(post_id: str) -> bool:
     return get_existing_post(post_id) is not None
 
 
-def save_post(post: Post, use_ai: bool = True) -> bool:
+def save_post(post: Post, use_ai: bool = False) -> bool:
     """
-    Save a post to the database with AI processing.
+    Save a post to the database.
     
     Args:
         post: Post data from scraper
-        use_ai: Whether to use AI to extract category/location (default: True)
+        use_ai: Whether to use AI to extract category/location (default: False)
     
     Returns:
         True if the post was newly added, False if it already existed.
     """
-    # Check if post already exists and get existing data
+    # Check if post already exists
     existing = get_existing_post(post["post_id"])
     
     if existing:
-        # Post exists - check if we need to update with AI processing
-        if use_ai and not existing.get('ai_processed'):
-            try:
-                from src.ai import process_post_with_ai
-                print(f"  📊 Post exists but not AI-processed, processing now...")
-                ai_data = process_post_with_ai(post["title"], post["text"], post["post_id"])
-            except (ImportError, Exception) as e:
-                print(f"  ⚠️  AI processing not available: {e}")
-                return False
-            
-            try:
-                supabase.table("posts").update({
-                    "category": ai_data["category"],
-                    "location": ai_data["location"],
-                    "ai_features": ai_data["ai_features"],
-                    "ai_processed": ai_data["ai_processed"]
-                }).eq("post_id", post["post_id"]).execute()
-                print(f"  ✅ Updated with AI: {ai_data['category']} @ {ai_data['location']}")
-            except Exception as e:
-                print(f"  ❌ Error updating AI data: {e}")
-        
         return False  # Post already existed
     
-    # New post - process with AI if enabled
-    ai_data = None
-    if use_ai:
-        try:
-            from src.ai import process_post_with_ai
-            print(f"  🤖 Processing new post with AI...")
-            ai_data = process_post_with_ai(post["title"], post["text"], post["post_id"])
-            print(f"  ✅ AI extracted: {ai_data['category']} @ {ai_data['location']}")
-        except ImportError:
-            print(f"  ⚠️  AI processing not available")
-        except Exception as e:
-            print(f"  ⚠️  AI processing failed: {e}")
-    
     try:
-        # Parse Facebook timestamp to proper datetime
-        try:
-            from src.scraper import parse_facebook_timestamp
-            posted_at = parse_facebook_timestamp(post["timestamp"])
-        except ImportError:
-            posted_at = None
-        
+        # Only use basic columns that exist in the database
         insert_data = {
             "post_id": post["post_id"],
             "title": post["title"],
             "text": post["text"],
             "url": post["url"],
             "timestamp": post["timestamp"],
-            "posted_at": posted_at.isoformat() if posted_at else None,
             "group_name": post["group_name"],
             "group_url": post["group_url"],
             "notified": False
         }
         
-        # Add AI-extracted data if available
-        if ai_data:
-            insert_data.update({
-                "category": ai_data["category"],
-                "location": ai_data["location"],
-                "ai_features": ai_data["ai_features"],
-                "ai_processed": ai_data["ai_processed"]
-            })
-        
         supabase.table("posts").insert(insert_data).execute()
+        print(f"  [SAVED] {post['title'][:50]}...")
         
         return True
     except Exception as e:
-        print(f"Error saving post: {e}")
+        print(f"  [ERROR] Saving post: {e}")
         return False
 
 
@@ -196,8 +147,8 @@ def get_posts(
         if only_new:
             query = query.eq("notified", False)
         
-        # Order by most recent first
-        query = query.order("scraped_at", desc=True)
+        # Order by most recent first (scraped_at, then by id for stable ordering)
+        query = query.order("scraped_at", desc=True).order("id", desc=True)
         
         # Add pagination
         query = query.range(offset, offset + limit - 1)
@@ -283,7 +234,7 @@ if __name__ == "__main__":
     print(f"Connecting to Supabase at {SUPABASE_URL}")
     try:
         result = supabase.table("posts").select("id", count="exact").limit(1).execute()
-        print(f"✅ Successfully connected to Supabase!")
+        print(f"[OK] Successfully connected to Supabase!")
         print(f"Total posts in database: {result.count if result.count else 0}")
     except Exception as e:
-        print(f"❌ Failed to connect to Supabase: {e}")
+        print(f"[ERROR] Failed to connect to Supabase: {e}")
