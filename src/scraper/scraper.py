@@ -52,44 +52,66 @@ def click_see_more(driver: WebDriver, parent_element) -> bool:
     Returns True if clicked successfully, False otherwise.
     """
     try:
-        # Find "See more" links/buttons within the post
-        see_more_selectors = [
-            "div[role='button'][tabindex='0']",  # Common Facebook "See more" button
-            "span[role='button']",
-            "div.x1i10hfl",  # Another common class for clickable elements
-        ]
+        # Facebook's "See more" button structure from user's HTML:
+        # <div role="button" tabindex="0">See more</div>
+        # Look for div with role="button" containing "See more" or "Se mer" text
         
-        for selector in see_more_selectors:
-            elements = parent_element.find_elements(By.CSS_SELECTOR, selector)
-            for elem in elements:
-                try:
-                    elem_text = elem.text.strip().lower()
-                    # Match various "See more" text patterns (including Norwegian)
-                    if elem_text in ["see more", "se mer", "vis mer", "more", "mer", "...see more", "...se mer"]:
-                        # Scroll into view and click
-                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", elem)
-                        time.sleep(0.2)
-                        elem.click()
-                        time.sleep(0.3)  # Wait for text to expand
-                        print(f"      DEBUG: [EXPAND] Clicked 'See more' button")
-                        return True
-                except Exception:
-                    continue
+        see_more_patterns = ["see more", "se mer", "vis mer"]
         
-        # Also try finding by partial text match
-        try:
-            see_more_links = parent_element.find_elements(By.XPATH, 
-                ".//*[contains(text(), 'See more') or contains(text(), 'Se mer') or contains(text(), 'Vis mer')]")
-            for link in see_more_links:
-                try:
-                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", link)
+        # Method 1: Find by role="button" with exact text
+        buttons = parent_element.find_elements(By.CSS_SELECTOR, "div[role='button'][tabindex='0']")
+        for btn in buttons:
+            try:
+                btn_text = btn.text.strip().lower()
+                if btn_text in see_more_patterns:
+                    # Use JavaScript click - more reliable for React/Facebook
+                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
                     time.sleep(0.2)
-                    link.click()
-                    time.sleep(0.3)
-                    print(f"      DEBUG: [EXPAND] Clicked 'See more' link")
+                    driver.execute_script("arguments[0].click();", btn)
+                    time.sleep(0.5)  # Wait for text to expand
+                    print(f"      DEBUG: [EXPAND] Clicked 'See more' button (role=button)")
                     return True
-                except Exception:
-                    continue
+            except Exception:
+                continue
+        
+        # Method 2: Find any element with exact "See more" text using XPath
+        for pattern in ["See more", "Se mer", "Vis mer"]:
+            try:
+                # Look for elements that have this exact text
+                xpath = f".//*[normalize-space(text())='{pattern}']"
+                elements = parent_element.find_elements(By.XPATH, xpath)
+                for elem in elements:
+                    try:
+                        # Check if element is visible and clickable
+                        if elem.is_displayed():
+                            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", elem)
+                            time.sleep(0.2)
+                            driver.execute_script("arguments[0].click();", elem)
+                            time.sleep(0.5)
+                            print(f"      DEBUG: [EXPAND] Clicked '{pattern}' element")
+                            return True
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+        
+        # Method 3: Find within the story_message container specifically
+        try:
+            message_divs = parent_element.find_elements(By.CSS_SELECTOR, "[data-ad-rendering-role='story_message']")
+            for msg_div in message_divs:
+                # Look for See more button inside the message
+                btns = msg_div.find_elements(By.CSS_SELECTOR, "div[role='button']")
+                for btn in btns:
+                    try:
+                        if btn.text.strip().lower() in see_more_patterns:
+                            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
+                            time.sleep(0.2)
+                            driver.execute_script("arguments[0].click();", btn)
+                            time.sleep(0.5)
+                            print(f"      DEBUG: [EXPAND] Clicked 'See more' in message container")
+                            return True
+                    except Exception:
+                        continue
         except Exception:
             pass
             
@@ -97,6 +119,42 @@ def click_see_more(driver: WebDriver, parent_element) -> bool:
         pass  # Silently fail - not all posts have "See more"
     
     return False
+
+
+def expand_all_see_more(driver: WebDriver) -> int:
+    """
+    Click ALL 'See more' buttons visible on the page to expand all posts.
+    Returns the number of buttons clicked.
+    Call this after scrolling and before extracting text.
+    """
+    clicked = 0
+    see_more_patterns = ["see more", "se mer", "vis mer"]
+    
+    try:
+        # Find all buttons with role="button" on the page
+        all_buttons = driver.find_elements(By.CSS_SELECTOR, "div[role='button'][tabindex='0']")
+        
+        for btn in all_buttons:
+            try:
+                btn_text = btn.text.strip().lower()
+                if btn_text in see_more_patterns:
+                    # Use JavaScript click
+                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
+                    time.sleep(0.1)
+                    driver.execute_script("arguments[0].click();", btn)
+                    clicked += 1
+                    time.sleep(0.2)  # Brief pause between clicks
+            except Exception:
+                continue
+        
+        if clicked > 0:
+            print(f"      DEBUG: [EXPAND] Clicked {clicked} 'See more' buttons on page")
+            time.sleep(1.0)  # Wait for all expansions to complete (longer wait for DOM updates)
+            
+    except Exception as e:
+        pass
+    
+    return clicked
 
 
 def get_timestamp_from_hover(driver: WebDriver, timestamp_element) -> str | None:
@@ -221,6 +279,9 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
         # Random pause before reading posts (0.5-2 seconds)
         time.sleep(random.uniform(0.5, 2.0))
         
+        # Expand all "See more" buttons on visible page before extracting text
+        expand_all_see_more(driver)
+        
         # Find all post text elements - try multiple selectors
         text_elements = driver.find_elements(By.CSS_SELECTOR, "[role='feed'] [data-ad-rendering-role='story_message']")
         if not text_elements:
@@ -231,20 +292,7 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
         
         for text_element in text_elements:
             try:
-                # First, try to find the parent container to click "See more"
-                try:
-                    temp_parent = text_element
-                    for _ in range(10):
-                        temp_parent = temp_parent.find_element(By.XPATH, "..")
-                        temp_role = temp_parent.get_attribute("role")
-                        if temp_role == "article":
-                            # Try to expand "See more" before extracting text
-                            click_see_more(driver, temp_parent)
-                            break
-                except Exception:
-                    pass
-                
-                # Now get the text (potentially expanded)
+                # Get the text (already expanded by expand_all_see_more)
                 text = text_element.text.strip()
                 
                 if not text:
@@ -447,26 +495,16 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
 
     # Final collection after scrolling
     print("\nFinal collection of posts...")
+    # Expand all "See more" buttons before final collection
+    expand_all_see_more(driver)
+    
     text_elements = driver.find_elements(By.CSS_SELECTOR, "[role='feed'] [data-ad-rendering-role='story_message']")
     if not text_elements:
         text_elements = driver.find_elements(By.CSS_SELECTOR, "[role='feed'] [data-ad-preview='message']")
     
     for text_element in text_elements:
         try:
-            # First, try to find the parent container to click "See more"
-            try:
-                temp_parent = text_element
-                for _ in range(10):
-                    temp_parent = temp_parent.find_element(By.XPATH, "..")
-                    temp_role = temp_parent.get_attribute("role")
-                    if temp_role == "article":
-                        # Try to expand "See more" before extracting text
-                        click_see_more(driver, temp_parent)
-                        break
-            except Exception:
-                pass
-            
-            # Now get the text (potentially expanded)
+            # Get the text (already expanded by expand_all_see_more)
             text = text_element.text.strip()
             
             if not text:
