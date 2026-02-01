@@ -381,7 +381,7 @@ export function PostsPage() {
                 </div>
                 
                 <div className="post-text">
-                  {post.text}
+                  {post.text.length > 150 ? post.text.substring(0, 150) + '...' : post.text}
                 </div>
                 
                 <div className="view-details-hint">
