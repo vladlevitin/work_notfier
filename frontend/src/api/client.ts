@@ -8,6 +8,7 @@ export interface Post {
   text: string;
   url: string;
   timestamp: string;
+  posted_at?: string;  // Actual posted time (ISO format)
   group_name: string;
   group_url: string;
   scraped_at: string;

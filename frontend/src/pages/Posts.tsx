@@ -165,6 +165,30 @@ export function PostsPage() {
     }
   };
 
+  // Format posted_at date (more detailed)
+  const formatPostedDate = (isoString: string): string => {
+    try {
+      const date = new Date(isoString);
+      return date.toLocaleString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return isoString;
+    }
+  };
+
+  // Get display timestamp - prefer posted_at over relative timestamp
+  const getDisplayTimestamp = (post: Post): string => {
+    if (post.posted_at) {
+      return formatPostedDate(post.posted_at);
+    }
+    return post.timestamp;
+  };
+
   // Get unique groups, categories, and locations for filter dropdowns
   const uniqueGroups = stats?.by_group.map(g => ({ name: g.group, url: '' })) || [];
   
@@ -333,7 +357,7 @@ export function PostsPage() {
               >
                 {/* Posted Date - Most Important */}
                 <div className="post-date">
-                  🕒 {post.timestamp}
+                  🕒 {getDisplayTimestamp(post)}
                 </div>
 
                 {/* Category Tag - Right after date */}

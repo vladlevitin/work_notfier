@@ -76,7 +76,17 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
         return False  # Post already existed
     
     try:
-        # Only use basic columns that exist in the database
+        # Parse the Facebook timestamp to get actual posted time
+        posted_at = None
+        try:
+            from src.scraper.timestamp_parser import parse_facebook_timestamp
+            parsed_time = parse_facebook_timestamp(post["timestamp"])
+            if parsed_time:
+                posted_at = parsed_time.isoformat()
+        except Exception as e:
+            print(f"  [WARN] Could not parse timestamp: {e}")
+        
+        # Build insert data with basic columns
         insert_data = {
             "post_id": post["post_id"],
             "title": post["title"],
@@ -88,13 +98,41 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
             "notified": False
         }
         
+        # Add posted_at if we successfully parsed the timestamp
+        if posted_at:
+            insert_data["posted_at"] = posted_at
+        
         supabase.table("posts").insert(insert_data).execute()
-        print(f"  [SAVED] {post['title'][:50]}...")
+        
+        if posted_at:
+            print(f"  [SAVED] {post['title'][:40]}... (posted: {posted_at[:16]})")
+        else:
+            print(f"  [SAVED] {post['title'][:50]}...")
         
         return True
     except Exception as e:
-        print(f"  [ERROR] Saving post: {e}")
-        return False
+        # If posted_at column doesn't exist, try without it
+        if "posted_at" in str(e):
+            try:
+                insert_data_basic = {
+                    "post_id": post["post_id"],
+                    "title": post["title"],
+                    "text": post["text"],
+                    "url": post["url"],
+                    "timestamp": post["timestamp"],
+                    "group_name": post["group_name"],
+                    "group_url": post["group_url"],
+                    "notified": False
+                }
+                supabase.table("posts").insert(insert_data_basic).execute()
+                print(f"  [SAVED] {post['title'][:50]}...")
+                return True
+            except Exception as e2:
+                print(f"  [ERROR] Saving post: {e2}")
+                return False
+        else:
+            print(f"  [ERROR] Saving post: {e}")
+            return False
 
 
 def save_posts(posts: list[Post]) -> tuple[int, int]:

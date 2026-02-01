@@ -31,7 +31,7 @@ export function PostDetailPage() {
     loadPost();
   }, [postId]);
 
-  // Format scraped_at date
+  // Format date in detail
   const formatDate = (isoString: string): string => {
     try {
       const date = new Date(isoString);
@@ -46,6 +46,14 @@ export function PostDetailPage() {
     } catch {
       return isoString;
     }
+  };
+
+  // Get display timestamp - prefer posted_at over relative timestamp
+  const getDisplayTimestamp = (post: Post): string => {
+    if (post.posted_at) {
+      return formatDate(post.posted_at);
+    }
+    return post.timestamp;
   };
 
   // Get category display with icon
@@ -133,7 +141,7 @@ export function PostDetailPage() {
           <h1 className="detail-title">{post.title}</h1>
           
           <div className="detail-timestamp">
-            🕒 Posted: {post.timestamp}
+            🕒 Posted: {getDisplayTimestamp(post)}
           </div>
         </div>
 
