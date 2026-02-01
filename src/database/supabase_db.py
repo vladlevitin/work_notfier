@@ -86,6 +86,15 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
         except Exception as e:
             print(f"  [WARN] Could not parse timestamp: {e}")
         
+        # Get AI-extracted category
+        category = "General"
+        try:
+            from src.ai.ai_processor import process_post_with_ai
+            ai_result = process_post_with_ai(post["title"], post["text"], post["post_id"])
+            category = ai_result.get("category", "General")
+        except Exception as e:
+            print(f"  [WARN] AI category extraction failed: {e}")
+        
         # Build insert data with basic columns
         insert_data = {
             "post_id": post["post_id"],
@@ -95,6 +104,7 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
             "timestamp": post["timestamp"],
             "group_name": post["group_name"],
             "group_url": post["group_url"],
+            "category": category,
             "notified": False
         }
         
@@ -111,8 +121,9 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
         
         return True
     except Exception as e:
-        # If posted_at column doesn't exist, try without it
-        if "posted_at" in str(e):
+        error_str = str(e)
+        # If category or posted_at column doesn't exist, try without them
+        if "category" in error_str or "posted_at" in error_str:
             try:
                 insert_data_basic = {
                     "post_id": post["post_id"],
@@ -125,7 +136,7 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
                     "notified": False
                 }
                 supabase.table("posts").insert(insert_data_basic).execute()
-                print(f"  [SAVED] {post['title'][:50]}...")
+                print(f"  [SAVED] {post['title'][:50]}... (without category)")
                 return True
             except Exception as e2:
                 print(f"  [ERROR] Saving post: {e2}")

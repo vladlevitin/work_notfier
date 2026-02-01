@@ -201,18 +201,20 @@ export function PostsPage() {
   // Get category display with icon (fallback for non-AI processed posts)
   const getCategoryDisplay = (post: Post) => {
     if (post.category) {
-      // Use AI-extracted category
+      // Use AI-extracted category with specific icons
       const categoryIcons: Record<string, string> = {
+        'Electrical': '⚡',
+        'Plumbing': '🔧',
         'Transport': '🚚',
         'Moving': '🚚',
         'Painting': '🎨',
         'Renovation': '🎨',
         'Cleaning': '🧹',
-        'Garden': '🧹',
-        'Plumbing': '🔧',
-        'Electrical': '🔧',
+        'Garden': '🌿',
         'Assembly': '🪑',
         'Furniture': '🪑',
+        'Mechanic': '🔩',
+        'Car': '🚗',
         'General': '📦'
       };
       
@@ -225,11 +227,13 @@ export function PostsPage() {
     
     // Fallback: keyword-based categorization for old posts
     const content = (post.title + ' ' + post.text).toLowerCase();
+    if (content.match(/(elektriker|stikkontakt|lys|sikring|led|montering.*lys)/)) return { icon: '⚡', name: 'Electrical' };
     if (content.match(/(flytte|bære|transport|frakte|hente|kjøre|bil|henger)/)) return { icon: '🚚', name: 'Transport / Moving' };
     if (content.match(/(male|sparkle|pusse|oppussing|renovere|snekker|gulv|vegg)/)) return { icon: '🎨', name: 'Painting / Renovation' };
     if (content.match(/(vask|rengjøring|utvask|hage|klippe|måke|snø)/)) return { icon: '🧹', name: 'Cleaning / Garden' };
-    if (content.match(/(rørlegger|elektriker|strøm|vann|vvs|lys)/)) return { icon: '🔧', name: 'Plumbing / Electrical' };
+    if (content.match(/(rørlegger|rør|vann|vvs|avløp)/)) return { icon: '🔧', name: 'Plumbing' };
     if (content.match(/(montere|demontere|ikea|møbler|skap|seng|sofa)/)) return { icon: '🪑', name: 'Assembly / Furniture' };
+    if (content.match(/(mekaniker|bremse|motor|verksted)/)) return { icon: '🔩', name: 'Mechanic / Car' };
     
     return { icon: '📦', name: 'General' };
   };
