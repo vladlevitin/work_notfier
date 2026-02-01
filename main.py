@@ -2,15 +2,57 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from datetime import datetime
+
+from dotenv import load_dotenv
+load_dotenv()
 
 # Import from new structure
 from src.scraper import scrape_facebook_group, filter_posts_by_keywords, print_posts
 from monitor import create_driver
 from src.database import save_posts, mark_as_notified
 from src.notifications import send_email_notification
+from src.ai.ai_processor import is_service_request
 from config.settings import load_facebook_groups, KEYWORDS
+
+
+def check_openai_api_key() -> bool:
+    """Check if OpenAI API key is configured and working."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    
+    if not api_key:
+        print("[WARNING] OPENAI_API_KEY not found in environment variables")
+        print("         AI-powered categorization will be disabled")
+        return False
+    
+    # Mask the key for display (show first 8 and last 4 chars)
+    masked_key = f"{api_key[:8]}...{api_key[-4:]}" if len(api_key) > 12 else "***"
+    print(f"[OK] OpenAI API Key configured: {masked_key}")
+    
+    # Try a simple API call to verify the key works
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key)
+        
+        # Make a minimal API call to verify the key
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Say 'OK' if you can read this."}],
+            max_tokens=5
+        )
+        
+        if response.choices and response.choices[0].message.content:
+            print("[OK] OpenAI API key verified - connection successful!")
+            return True
+        else:
+            print("[WARNING] OpenAI API returned empty response")
+            return False
+            
+    except Exception as e:
+        print(f"[ERROR] OpenAI API key verification failed: {str(e)}")
+        return False
 
 
 def print_scrape_metadata(facebook_groups: list) -> None:
@@ -65,6 +107,10 @@ def main() -> int:
     print(f"Started: {timestamp}")
     print("="*80)
     
+    # Check OpenAI API key
+    print("\n[CONFIG] Checking API keys...")
+    openai_ok = check_openai_api_key()
+    
     # Load Facebook groups from config
     facebook_groups = load_facebook_groups()
     
@@ -103,7 +149,23 @@ def main() -> int:
             
             print(f"\n[OK] Scraped {len(posts)} posts from this group")
             
-            # Save ALL posts to database
+            # Filter out service offers (keep only service requests) using AI
+            if openai_ok and posts:
+                print(f"[AI] Filtering out service offers (keeping only job requests)...")
+                filtered_posts = []
+                offers_count = 0
+                
+                for post in posts:
+                    if is_service_request(post.get('title', ''), post.get('text', '')):
+                        filtered_posts.append(post)
+                    else:
+                        offers_count += 1
+                        print(f"    [SKIP] Service offer: {post.get('title', '')[:50]}...")
+                
+                print(f"    [AI] Kept {len(filtered_posts)} requests, filtered out {offers_count} offers")
+                posts = filtered_posts
+            
+            # Save filtered posts to database
             if posts:
                 print(f"[*] Saving to database...")
                 new_count, skipped_count = save_posts(posts)

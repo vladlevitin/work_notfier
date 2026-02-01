@@ -2,6 +2,7 @@
 AI-powered post processor using OpenAI to extract:
 - Category (Transport, Painting, Cleaning, etc.)
 - Location (Oslo, Asker, etc.)
+- Post type (request vs offer)
 - Other relevant features
 """
 
@@ -24,6 +25,42 @@ CATEGORIES = [
     "Assembly / Furniture",
     "General"
 ]
+
+
+def is_service_request(title: str, text: str) -> bool:
+    """
+    Use OpenAI to determine if a post is a SERVICE REQUEST (someone needs help)
+    vs a SERVICE OFFER (someone offering their services).
+    
+    Returns True if it's a request for service (we want to keep these).
+    Returns False if it's an offer/advertisement (we want to filter these out).
+    """
+    try:
+        content = f"{title}\n{text}"
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": """You analyze Norwegian job postings to determine if they are:
+- SERVICE_REQUEST: Someone NEEDS help/service (e.g., "Trenger hjelp med...", "Ser etter noen som kan...", "Ønsker å få...")
+- SERVICE_OFFER: Someone is OFFERING their services (e.g., "Tilbyr...", "Leier ut...", "Vi utfører...", "Jeg kan hjelpe med...")
+
+Respond with ONLY one word: REQUEST or OFFER"""},
+                {"role": "user", "content": content}
+            ],
+            temperature=0.1,
+            max_tokens=10
+        )
+        
+        result = response.choices[0].message.content.strip().upper()
+        print(f"    [AI] Post type: {result}")
+        
+        return "REQUEST" in result
+        
+    except Exception as e:
+        print(f"    [AI] Classification failed: {e}")
+        # Default to keeping the post if classification fails
+        return True
 
 
 def process_post_with_ai(title: str, text: str, post_id: str) -> Dict[str, any]:

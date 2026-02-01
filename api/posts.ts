@@ -11,6 +11,21 @@ function parseFacebookTimestamp(timestamp: string): Date {
     'September': 8, 'October': 9, 'November': 10, 'December': 11
   };
   
+  // Handle full format with day name: "Sunday 1 February 2026 at 14:08"
+  const fullDateMatch = timestamp.match(/^(?:Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\s+(\d+)\s+(\w+)\s+(\d{4})\s+at\s+(\d+):(\d+)$/i);
+  if (fullDateMatch) {
+    const day = parseInt(fullDateMatch[1]);
+    const month = fullDateMatch[2];
+    const year = parseInt(fullDateMatch[3]);
+    const hour = parseInt(fullDateMatch[4]);
+    const minute = parseInt(fullDateMatch[5]);
+    
+    const monthIndex = monthMap[month];
+    if (monthIndex !== undefined) {
+      return new Date(year, monthIndex, day, hour, minute);
+    }
+  }
+  
   // Handle "Xm" format (X minutes ago)
   const minutesMatch = timestamp.match(/^(\d+)m$/);
   if (minutesMatch) {
@@ -62,6 +77,21 @@ function parseFacebookTimestamp(timestamp: string): Date {
       }
       
       return date;
+    }
+  }
+  
+  // Handle "DD Month YYYY at HH:MM" format (e.g., "5 May 2025 at 14:30")
+  const dateYearTimeMatch = timestamp.match(/^(\d+)\s+(\w+)\s+(\d{4})\s+at\s+(\d+):(\d+)$/);
+  if (dateYearTimeMatch) {
+    const day = parseInt(dateYearTimeMatch[1]);
+    const month = dateYearTimeMatch[2];
+    const year = parseInt(dateYearTimeMatch[3]);
+    const hour = parseInt(dateYearTimeMatch[4]);
+    const minute = parseInt(dateYearTimeMatch[5]);
+    
+    const monthIndex = monthMap[month];
+    if (monthIndex !== undefined) {
+      return new Date(year, monthIndex, day, hour, minute);
     }
   }
   

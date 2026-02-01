@@ -33,6 +33,7 @@ def parse_facebook_timestamp(timestamp_str: str) -> Optional[datetime]:
     - "Yesterday at 17:48"
     - "24 January at 08:42"
     - "5 May 2025"
+    - "Sunday 1 February 2026 at 13:56" (full tooltip format)
     - "Recently"
     
     Args:
@@ -43,6 +44,22 @@ def parse_facebook_timestamp(timestamp_str: str) -> Optional[datetime]:
     """
     now = datetime.now()
     timestamp_str = timestamp_str.strip()
+    
+    # Format: "Sunday 1 February 2026 at 13:56" (full tooltip format with day name)
+    match = re.match(r'^(?:Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\s+(\d+)\s+(\w+)\s+(\d{4})\s+at\s+(\d+):(\d+)$', timestamp_str, re.IGNORECASE)
+    if match:
+        day = int(match.group(1))
+        month_str = match.group(2)
+        year = int(match.group(3))
+        hour = int(match.group(4))
+        minute = int(match.group(5))
+        
+        month = MONTHS.get(month_str.lower())
+        if month:
+            try:
+                return datetime(year, month, day, hour, minute)
+            except ValueError:
+                return None
     
     # Format: "5m", "30m" (minutes ago)
     match = re.match(r'^(\d+)m$', timestamp_str)

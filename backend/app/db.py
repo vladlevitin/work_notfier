@@ -20,6 +20,22 @@ def parse_facebook_timestamp(timestamp: str) -> datetime:
         'September': 9, 'October': 10, 'November': 11, 'December': 12
     }
     
+    # Handle full format with day name: "Sunday 1 February 2026 at 14:08"
+    match = re.match(r'^(?:Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\s+(\d+)\s+(\w+)\s+(\d{4})\s+at\s+(\d+):(\d+)$', timestamp, re.IGNORECASE)
+    if match:
+        day = int(match.group(1))
+        month_name = match.group(2)
+        year = int(match.group(3))
+        hour = int(match.group(4))
+        minute = int(match.group(5))
+        
+        month = month_map.get(month_name)
+        if month:
+            try:
+                return datetime(year, month, day, hour, minute)
+            except ValueError:
+                pass
+    
     # Handle "Xm" format (X minutes ago)
     match = re.match(r'^(\d+)m$', timestamp)
     if match:
@@ -57,11 +73,30 @@ def parse_facebook_timestamp(timestamp: str) -> datetime:
         month = month_map.get(month_name)
         if month:
             year = now.year
-            date = datetime(year, month, day, hour, minute)
-            # If date is in the future, it's from last year
-            if date > now:
-                date = datetime(year - 1, month, day, hour, minute)
-            return date
+            try:
+                date = datetime(year, month, day, hour, minute)
+                # If date is in the future, it's from last year
+                if date > now:
+                    date = datetime(year - 1, month, day, hour, minute)
+                return date
+            except ValueError:
+                pass
+    
+    # Handle "DD Month YYYY at HH:MM" format (e.g., "5 May 2025 at 14:30")
+    match = re.match(r'^(\d+)\s+(\w+)\s+(\d{4})\s+at\s+(\d+):(\d+)$', timestamp)
+    if match:
+        day = int(match.group(1))
+        month_name = match.group(2)
+        year = int(match.group(3))
+        hour = int(match.group(4))
+        minute = int(match.group(5))
+        
+        month = month_map.get(month_name)
+        if month:
+            try:
+                return datetime(year, month, day, hour, minute)
+            except ValueError:
+                pass
     
     # Handle "DD Month YYYY" format (e.g., "5 May 2025")
     match = re.match(r'^(\d+)\s+(\w+)\s+(\d{4})$', timestamp)
@@ -72,7 +107,10 @@ def parse_facebook_timestamp(timestamp: str) -> datetime:
         
         month = month_map.get(month_name)
         if month:
-            return datetime(year, month, day, 12, 0)
+            try:
+                return datetime(year, month, day, 12, 0)
+            except ValueError:
+                pass
     
     # Handle "Recently" - treat as very recent
     if timestamp.lower() == 'recently':

@@ -8,6 +8,7 @@ import time
 from typing import TypedDict
 
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -43,6 +44,98 @@ KEYWORDS = [
     "sjafoer",
     "forerkort",
 ]
+
+
+def get_timestamp_from_hover(driver: WebDriver, timestamp_element) -> str | None:
+    """
+    Hover over a timestamp element to get the full datetime from the tooltip.
+    Facebook shows tooltips like "Sunday 1 February 2026 at 13:56" when hovering.
+    Returns the tooltip text or None if not found.
+    """
+    try:
+        # Scroll element into view first
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", timestamp_element)
+        time.sleep(0.2)
+        
+        # Hover over the element
+        actions = ActionChains(driver)
+        actions.move_to_element(timestamp_element).perform()
+        
+        # Wait for tooltip to appear (Facebook uses a div with role="tooltip" or similar)
+        time.sleep(0.5)
+        
+        # Try to find the tooltip - Facebook uses various tooltip implementations
+        tooltip_selectors = [
+            "div[role='tooltip']",
+            "div[data-testid='tooltip']", 
+            "span[role='tooltip']",
+            "div.x78zum5.x1n2onr6.xh8yej3 span",  # Common Facebook tooltip structure
+            "div[class*='tooltip']",
+        ]
+        
+        for selector in tooltip_selectors:
+            tooltips = driver.find_elements(By.CSS_SELECTOR, selector)
+            for tooltip in tooltips:
+                try:
+                    tooltip_text = tooltip.text.strip()
+                    
+                    # Skip if too long (probably grabbed post content instead of tooltip)
+                    if len(tooltip_text) > 60:
+                        continue
+                    
+                    # Skip if too short
+                    if len(tooltip_text) < 10:
+                        continue
+                    
+                    # Clean up trailing " ·" or similar
+                    tooltip_text = tooltip_text.rstrip(' ·').strip()
+                    
+                    # Check if it looks like a proper date/time format
+                    # Must have a month name AND either "at" with time OR a year
+                    month_names = ["january", "february", "march", "april", "may", "june",
+                                  "july", "august", "september", "october", "november", "december"]
+                    has_month = any(m in tooltip_text.lower() for m in month_names)
+                    has_time = " at " in tooltip_text.lower() and ":" in tooltip_text
+                    has_year = any(y in tooltip_text for y in ["2024", "2025", "2026", "2027"])
+                    
+                    # Valid formats:
+                    # "Sunday 1 February 2026 at 13:56" (day name + date + year + time)
+                    # "1 February at 13:56" (date + time, no year)
+                    if has_month and (has_time or has_year):
+                        print(f"      DEBUG: [TOOLTIP] Got full datetime: '{tooltip_text}'")
+                        # Move mouse away to close tooltip
+                        try:
+                            actions.move_by_offset(100, 100).perform()
+                        except:
+                            pass
+                        return tooltip_text
+                except:
+                    continue
+        
+        # Also try aria-label attribute on the element itself
+        aria_label = timestamp_element.get_attribute("aria-label")
+        if aria_label and 10 < len(aria_label) < 60:
+            aria_label = aria_label.rstrip(' ·').strip()
+            month_names = ["january", "february", "march", "april", "may", "june",
+                          "july", "august", "september", "october", "november", "december"]
+            has_month = any(m in aria_label.lower() for m in month_names)
+            has_time = " at " in aria_label.lower() and ":" in aria_label
+            has_year = any(y in aria_label for y in ["2024", "2025", "2026", "2027"])
+            
+            if has_month and (has_time or has_year):
+                print(f"      DEBUG: [ARIA-LABEL] Got full datetime: '{aria_label}'")
+                return aria_label
+        
+        # Move mouse away
+        try:
+            actions.move_by_offset(100, 100).perform()
+        except:
+            pass
+        
+    except Exception as e:
+        print(f"      DEBUG: Hover failed: {e}")
+    
+    return None
 
 
 def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int = 5) -> list[Post]:
@@ -182,37 +275,64 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
                         # Try to find timestamp - Facebook timestamps are usually in specific locations
                         try:
                             # Facebook uses various selectors for timestamps
-                            # Look for abbr tags (often contain time), spans with specific classes, and links
-                            time_elements = parent.find_elements(By.CSS_SELECTOR, 
-                                "abbr, span.x4k7w5x, span.x1heor9g, a[href*='posts'] span, a[href*='permalink'] span")
+                            # First, look for the timestamp link (usually contains time like "7m", "2h", etc.)
+                            # These links have hrefs to posts/comments and show full datetime on hover
+                            timestamp_links = parent.find_elements(By.CSS_SELECTOR, 
+                                "a[href*='posts'][href*='comment_id'], a[href*='permalink']")
                             
-                            print(f"      DEBUG: Found {len(time_elements)} potential timestamp elements")
+                            # Also try broader selectors
+                            if not timestamp_links:
+                                timestamp_links = parent.find_elements(By.CSS_SELECTOR, 
+                                    "abbr, span.x4k7w5x, span.x1heor9g, a[href*='posts'] span, a[href*='permalink'] span")
                             
-                            for idx, elem in enumerate(time_elements):
+                            print(f"      DEBUG: Found {len(timestamp_links)} potential timestamp elements")
+                            
+                            timestamp_found = False
+                            for idx, elem in enumerate(timestamp_links):
                                 try:
                                     text_content = elem.text.strip()
                                     
                                     # Debug first few timestamp candidates
-                                    if idx < 5:
+                                    if idx < 3:
                                         print(f"      DEBUG: Timestamp candidate {idx}: '{text_content}'")
                                     
-                                    # Look for time indicators in multiple languages
+                                    # Check if this looks like a relative timestamp (7m, 2h, Yesterday, etc.)
                                     if text_content and any(indicator in text_content.lower() 
                                         for indicator in ["min", "m", "h", "t", "d", "w", "hour", "day", "week", 
-                                                        "month", "year", ":", "ago", "siden", "timer", "dager"]):
-                                        timestamp = text_content
-                                        print(f"      DEBUG: [OK] Selected timestamp: '{timestamp}'")
-                                        break
+                                                        "month", "year", ":", "ago", "siden", "timer", "dager",
+                                                        "yesterday", "recently", "just now", "january", "february",
+                                                        "march", "april", "may", "june", "july", "august",
+                                                        "september", "october", "november", "december"]):
+                                        
+                                        # Try to hover over this element to get the full datetime from tooltip
+                                        full_datetime = get_timestamp_from_hover(driver, elem)
+                                        if full_datetime:
+                                            # Clean up any trailing characters
+                                            timestamp = full_datetime.rstrip(' ·').strip()
+                                            print(f"      DEBUG: [OK] Got FULL timestamp from hover: '{timestamp}'")
+                                            timestamp_found = True
+                                            break
+                                        else:
+                                            # Fall back to the text content, cleaned up
+                                            timestamp = text_content.rstrip(' ·').strip()
+                                            print(f"      DEBUG: [OK] Using relative timestamp: '{timestamp}'")
+                                            timestamp_found = True
+                                            break
                                     
                                     # Also check the title attribute (abbr tags often have full date in title)
                                     title_attr = elem.get_attribute("title")
                                     if title_attr:
                                         print(f"      DEBUG: Found title attribute: '{title_attr}'")
                                         timestamp = title_attr
+                                        timestamp_found = True
                                         break
                                         
                                 except Exception as e:
                                     continue
+                            
+                            if not timestamp_found:
+                                print(f"      DEBUG: No timestamp found, using 'Recently'")
+                                
                         except Exception as e:
                             print(f"      DEBUG: Error finding timestamp: {e}")
                     
@@ -339,20 +459,33 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
                         except Exception:
                             continue
                     
-                    # Try to find timestamp
+                    # Try to find timestamp with hover for full datetime
                     try:
-                        time_elements = parent.find_elements(By.CSS_SELECTOR, 
-                            "abbr, span.x4k7w5x, span.x1heor9g, a[href*='posts'] span, a[href*='permalink'] span")
+                        timestamp_links = parent.find_elements(By.CSS_SELECTOR, 
+                            "a[href*='posts'][href*='comment_id'], a[href*='permalink']")
                         
-                        for elem in time_elements:
+                        if not timestamp_links:
+                            timestamp_links = parent.find_elements(By.CSS_SELECTOR, 
+                                "abbr, span.x4k7w5x, span.x1heor9g, a[href*='posts'] span, a[href*='permalink'] span")
+                        
+                        for elem in timestamp_links:
                             try:
                                 text_content = elem.text.strip()
                                 
                                 # Look for time indicators in multiple languages
                                 if text_content and any(indicator in text_content.lower() 
                                     for indicator in ["min", "m", "h", "t", "d", "w", "hour", "day", "week", 
-                                                    "month", "year", ":", "ago", "siden", "timer", "dager"]):
-                                    timestamp = text_content
+                                                    "month", "year", ":", "ago", "siden", "timer", "dager",
+                                                    "yesterday", "recently", "just now", "january", "february",
+                                                    "march", "april", "may", "june", "july", "august",
+                                                    "september", "october", "november", "december"]):
+                                    
+                                    # Try to hover for full datetime
+                                    full_datetime = get_timestamp_from_hover(driver, elem)
+                                    if full_datetime:
+                                        timestamp = full_datetime.rstrip(' ·').strip()
+                                    else:
+                                        timestamp = text_content.rstrip(' ·').strip()
                                     break
                                 
                                 # Also check the title attribute (abbr tags often have full date in title)
@@ -368,6 +501,52 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
                         
             except Exception:
                 pass
+            
+            # If we still have "Recently" as timestamp, try one more time from any parent level
+            if timestamp == "Recently":
+                try:
+                    # Go back up the DOM and look for any timestamp-like element
+                    search_parent = text_element
+                    for _ in range(10):
+                        try:
+                            search_parent = search_parent.find_element(By.XPATH, "..")
+                        except:
+                            break
+                        
+                        # Look for timestamp elements at this level
+                        timestamp_candidates = search_parent.find_elements(By.CSS_SELECTOR,
+                            "a[href*='posts'], abbr, span[dir='auto']")
+                        
+                        for elem in timestamp_candidates[:15]:
+                            try:
+                                elem_text = elem.text.strip()
+                                if not elem_text or len(elem_text) > 50:
+                                    continue
+                                    
+                                # Check if this looks like a timestamp
+                                time_indicators = ["min", "h", "t", "d", "w", "hour", "day", "week",
+                                                  "ago", "siden", "timer", "yesterday", "recently",
+                                                  "january", "february", "march", "april", "may", "june",
+                                                  "july", "august", "september", "october", "november", "december",
+                                                  "at ", ":"]
+                                
+                                if any(ind in elem_text.lower() for ind in time_indicators):
+                                    full_dt = get_timestamp_from_hover(driver, elem)
+                                    if full_dt:
+                                        timestamp = full_dt.rstrip(' ·').strip()
+                                        print(f"      DEBUG: [FALLBACK] Got timestamp: '{timestamp}'")
+                                        break
+                                    elif len(elem_text) < 30:
+                                        timestamp = elem_text.rstrip(' ·').strip()
+                                        print(f"      DEBUG: [FALLBACK] Using text: '{timestamp}'")
+                                        break
+                            except:
+                                continue
+                        
+                        if timestamp != "Recently":
+                            break
+                except Exception as e:
+                    print(f"      DEBUG: Fallback timestamp search failed: {e}")
             
             dict_key = post_id if post_id != "unknown" else text[:100]
             
