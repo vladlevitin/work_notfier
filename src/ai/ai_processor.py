@@ -16,15 +16,19 @@ load_dotenv()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# Define available categories
-CATEGORIES = [
-    "Transport / Moving",
-    "Painting / Renovation", 
-    "Cleaning / Garden",
-    "Plumbing / Electrical",
-    "Assembly / Furniture",
-    "General"
-]
+# Define available categories with descriptions
+CATEGORIES = {
+    "Electrical": "Electrician work, wiring, lights, mirrors with electrical, outlets, fuse boxes, stove guards",
+    "Plumbing": "Pipes, water, drains, toilets, sinks, showers, bathrooms (water-related)",
+    "Transport / Moving": "Moving items, transporting goods, pickup/delivery, using vehicles",
+    "Painting / Renovation": "Painting walls, spackling, wallpaper, renovation, construction work", 
+    "Cleaning / Garden": "House cleaning, garden work, lawn care, window washing",
+    "Assembly / Furniture": "IKEA assembly, furniture mounting, shelves, TV mounting",
+    "Mechanic / Car": "Car repairs, brakes, mechanical work on vehicles",
+    "General": "Anything that doesn't fit the other categories"
+}
+
+CATEGORY_LIST = list(CATEGORIES.keys())
 
 
 def is_service_request(title: str, text: str) -> bool:
@@ -76,18 +80,27 @@ def process_post_with_ai(title: str, text: str, post_id: str) -> Dict[str, any]:
         Dictionary with: category, location, features
     """
     try:
-        prompt = f"""Analyze this Norwegian job posting and extract:
-1. Category (choose ONE): {', '.join(CATEGORIES)}
-2. Location (city/area mentioned, or "Unknown" if not specified)
-3. Key features (as JSON object with: urgency, price_mentioned, contact_method)
+        # Build category descriptions for the prompt
+        category_desc = "\n".join([f"- {cat}: {desc}" for cat, desc in CATEGORIES.items()])
+        
+        prompt = f"""Analyze this Norwegian job posting and classify it.
+
+CATEGORIES (choose the MOST SPECIFIC one that matches):
+{category_desc}
 
 Post Title: {title}
-Post Text: {text}
+Post Content: {text}
+
+IMPORTANT: 
+- If the post mentions "elektriker" (electrician), lights, wiring, outlets, mirrors with electrical connections, or any electrical work -> choose "Electrical"
+- If the post mentions moving/transporting items from A to B -> choose "Transport / Moving"
+- If the post mentions painting, spackling, walls -> choose "Painting / Renovation"
+- Be SPECIFIC - don't default to General if a specific category fits
 
 Respond in JSON format:
 {{
-  "category": "one of the categories above",
-  "location": "city or area name",
+  "category": "one of the exact category names above",
+  "location": "city or area name, or Unknown",
   "features": {{
     "urgency": "urgent/normal/flexible",
     "price_mentioned": true/false,
@@ -98,10 +111,10 @@ Respond in JSON format:
         response = client.chat.completions.create(
             model="gpt-4o-mini",  # Fast and cost-effective
             messages=[
-                {"role": "system", "content": "You are a job posting analyzer. Extract structured information from Norwegian job postings. Always respond with valid JSON only, no additional text."},
+                {"role": "system", "content": "You are a job posting analyzer for Norwegian small jobs. Classify posts accurately into the MOST SPECIFIC category. Always respond with valid JSON only."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.3,
+            temperature=0.1,  # Lower temperature for more consistent classification
             max_tokens=200
         )
         
@@ -110,8 +123,22 @@ Respond in JSON format:
         # Parse JSON response
         result = json.loads(content)
         
+        # Validate category is one of the valid ones
+        category = result.get("category", "General")
+        if category not in CATEGORY_LIST:
+            # Try to find a close match
+            category_lower = category.lower()
+            for valid_cat in CATEGORY_LIST:
+                if valid_cat.lower() in category_lower or category_lower in valid_cat.lower():
+                    category = valid_cat
+                    break
+            else:
+                category = "General"
+        
+        print(f"    [AI] Category: {category}")
+        
         return {
-            "category": result.get("category", "General"),
+            "category": category,
             "location": result.get("location", "Unknown"),
             "ai_features": result.get("features", {}),
             "ai_processed": True
