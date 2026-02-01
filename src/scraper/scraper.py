@@ -46,6 +46,59 @@ KEYWORDS = [
 ]
 
 
+def click_see_more(driver: WebDriver, parent_element) -> bool:
+    """
+    Click 'See more' button to expand the full post text.
+    Returns True if clicked successfully, False otherwise.
+    """
+    try:
+        # Find "See more" links/buttons within the post
+        see_more_selectors = [
+            "div[role='button'][tabindex='0']",  # Common Facebook "See more" button
+            "span[role='button']",
+            "div.x1i10hfl",  # Another common class for clickable elements
+        ]
+        
+        for selector in see_more_selectors:
+            elements = parent_element.find_elements(By.CSS_SELECTOR, selector)
+            for elem in elements:
+                try:
+                    elem_text = elem.text.strip().lower()
+                    # Match various "See more" text patterns (including Norwegian)
+                    if elem_text in ["see more", "se mer", "vis mer", "more", "mer", "...see more", "...se mer"]:
+                        # Scroll into view and click
+                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", elem)
+                        time.sleep(0.2)
+                        elem.click()
+                        time.sleep(0.3)  # Wait for text to expand
+                        print(f"      DEBUG: [EXPAND] Clicked 'See more' button")
+                        return True
+                except Exception:
+                    continue
+        
+        # Also try finding by partial text match
+        try:
+            see_more_links = parent_element.find_elements(By.XPATH, 
+                ".//*[contains(text(), 'See more') or contains(text(), 'Se mer') or contains(text(), 'Vis mer')]")
+            for link in see_more_links:
+                try:
+                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", link)
+                    time.sleep(0.2)
+                    link.click()
+                    time.sleep(0.3)
+                    print(f"      DEBUG: [EXPAND] Clicked 'See more' link")
+                    return True
+                except Exception:
+                    continue
+        except Exception:
+            pass
+            
+    except Exception as e:
+        pass  # Silently fail - not all posts have "See more"
+    
+    return False
+
+
 def get_timestamp_from_hover(driver: WebDriver, timestamp_element) -> str | None:
     """
     Hover over a timestamp element to get the full datetime from the tooltip.
@@ -178,6 +231,20 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
         
         for text_element in text_elements:
             try:
+                # First, try to find the parent container to click "See more"
+                try:
+                    temp_parent = text_element
+                    for _ in range(10):
+                        temp_parent = temp_parent.find_element(By.XPATH, "..")
+                        temp_role = temp_parent.get_attribute("role")
+                        if temp_role == "article":
+                            # Try to expand "See more" before extracting text
+                            click_see_more(driver, temp_parent)
+                            break
+                except Exception:
+                    pass
+                
+                # Now get the text (potentially expanded)
                 text = text_element.text.strip()
                 
                 if not text:
@@ -386,6 +453,20 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
     
     for text_element in text_elements:
         try:
+            # First, try to find the parent container to click "See more"
+            try:
+                temp_parent = text_element
+                for _ in range(10):
+                    temp_parent = temp_parent.find_element(By.XPATH, "..")
+                    temp_role = temp_parent.get_attribute("role")
+                    if temp_role == "article":
+                        # Try to expand "See more" before extracting text
+                        click_see_more(driver, temp_parent)
+                        break
+            except Exception:
+                pass
+            
+            # Now get the text (potentially expanded)
             text = text_element.text.strip()
             
             if not text:
