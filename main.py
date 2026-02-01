@@ -149,6 +149,13 @@ def main() -> int:
             
             print(f"\n[OK] Scraped {len(posts)} posts from this group")
             
+            # Filter out posts with unknown IDs (can't be properly tracked)
+            if posts:
+                unknown_count = sum(1 for p in posts if p.get('post_id') == 'unknown')
+                if unknown_count > 0:
+                    posts = [p for p in posts if p.get('post_id') != 'unknown']
+                    print(f"[FILTER] Skipped {unknown_count} posts with unknown IDs")
+            
             # Filter out service offers (keep only service requests) using AI
             if openai_ok and posts:
                 print(f"[AI] Filtering out service offers (keeping only job requests)...")
