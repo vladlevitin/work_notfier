@@ -220,18 +220,25 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
         # Check each new post for moving/transport and email RIGHT AWAY
         # ==========================================================================
         if posts and openai_ok:
+            print(f"    Checking {len(posts)} posts for moving/transport jobs...")
             for post in posts:
                 # Only check recent posts
                 if not is_post_recent(post, MAX_POST_AGE_HOURS, log_skip=False):
+                    print(f"    [SKIP] Too old: {post.get('title', '')[:40]}...")
                     continue
                 
                 # Check if it's a moving/transport job
-                if is_driving_job(post.get('title', ''), post.get('text', '')):
-                    print(f"    📧 MOVING JOB DETECTED -> sending email immediately!")
-                    print(f"       Title: {post.get('title', '')[:50]}...")
+                title = post.get('title', '')
+                text = post.get('text', '')
+                print(f"    [CHECK] {title[:50]}...", end=" ", flush=True)
+                
+                if is_driving_job(title, text):
+                    print(f"-> YES! Sending email...")
                     send_email_notification([post], group_url)
                     mark_as_notified([post["post_id"]])
                     new_relevant_posts.append(post)
+                else:
+                    print(f"-> No (not moving/transport)")
         # ==========================================================================
         
         # Only run AI filtering on new posts
