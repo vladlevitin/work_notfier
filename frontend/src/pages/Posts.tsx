@@ -70,7 +70,7 @@ export function PostsPage() {
       setLoadingMore(false);
       loadingRef.current = false;
     }
-  }, [offset, groupFilter, searchFilter, showOnlyNew]);
+  }, [offset, groupFilter, searchFilter, showOnlyNew, categoryFilter, locationFilter]);
 
   // Load stats
   const loadStats = useCallback(async () => {
