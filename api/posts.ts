@@ -161,7 +161,8 @@ export default async function handler(
     let query = supabase.from('posts').select('*');
 
     if (groupUrl) {
-      query = query.eq('group_url', groupUrl);
+      // Match by group name (the filter sends group name, not URL)
+      query = query.ilike('group_name', `%${groupUrl}%`);
     }
 
     if (search) {
@@ -173,7 +174,8 @@ export default async function handler(
     }
 
     if (category) {
-      query = query.eq('category', category);
+      // Use ilike for partial match (e.g., "Transport" matches "Transport / Moving")
+      query = query.ilike('category', `%${category}%`);
     }
 
     if (location) {
@@ -200,7 +202,7 @@ export default async function handler(
     let countQuery = supabase.from('posts').select('*', { count: 'exact', head: true });
 
     if (groupUrl) {
-      countQuery = countQuery.eq('group_url', groupUrl);
+      countQuery = countQuery.ilike('group_name', `%${groupUrl}%`);
     }
 
     if (search) {
@@ -212,7 +214,7 @@ export default async function handler(
     }
 
     if (category) {
-      countQuery = countQuery.eq('category', category);
+      countQuery = countQuery.ilike('category', `%${category}%`);
     }
 
     if (location) {

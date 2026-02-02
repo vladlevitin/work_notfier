@@ -215,6 +215,25 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
             print(f" (skip: {unknown_count} unknown, {existing_count} in DB)", end="")
         print(f" -> {len(posts)} new")
         
+        # ==========================================================================
+        # IMMEDIATE EMAIL CHECK - Before any other processing!
+        # Check each new post for moving/transport and email RIGHT AWAY
+        # ==========================================================================
+        if posts and openai_ok:
+            for post in posts:
+                # Only check recent posts
+                if not is_post_recent(post, MAX_POST_AGE_HOURS, log_skip=False):
+                    continue
+                
+                # Check if it's a moving/transport job
+                if is_driving_job(post.get('title', ''), post.get('text', '')):
+                    print(f"    📧 MOVING JOB DETECTED -> sending email immediately!")
+                    print(f"       Title: {post.get('title', '')[:50]}...")
+                    send_email_notification([post], group_url)
+                    mark_as_notified([post["post_id"]])
+                    new_relevant_posts.append(post)
+        # ==========================================================================
+        
         # Only run AI filtering on new posts
         offers_count = 0
         if openai_ok and posts:
@@ -256,34 +275,10 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
             if new_count > 0:
                 all_new_posts.extend(posts[:new_count])
         
-        # Filter for relevant keywords
+        # Note: Email notifications for moving jobs are sent IMMEDIATELY above
+        # before any filtering. This section just tracks keyword matches for stats.
         relevant_posts = filter_posts_by_keywords(posts)
         all_relevant_posts.extend(relevant_posts)
-        
-        # Send email notification IMMEDIATELY for this group's new relevant posts
-        if relevant_posts:
-            # Filter out old posts (only notify for posts within MAX_POST_AGE_HOURS)
-            recent_posts = [p for p in relevant_posts if is_post_recent(p, MAX_POST_AGE_HOURS)]
-            
-            if recent_posts:
-                print(f"    MATCH! {len(recent_posts)} keyword matches -> checking if driving jobs...")
-                
-                # Send ONE email per post, but only if AI confirms it's a driving job
-                emails_sent = 0
-                for post in recent_posts:
-                    # Use AI to verify this is actually a driving/transport job
-                    if is_driving_job(post.get('title', ''), post.get('text', '')):
-                        send_email_notification([post], group_url)
-                        mark_as_notified([post["post_id"]])
-                        new_relevant_posts.append(post)
-                        emails_sent += 1
-                    else:
-                        print(f"    [SKIP] Not a driving job: {post.get('title', '')[:40]}...")
-                
-                if emails_sent > 0:
-                    print(f"    Sent {emails_sent} emails for driving jobs")
-            elif relevant_posts:
-                print(f"    MATCH! {len(relevant_posts)} posts match keywords but all too old (>{MAX_POST_AGE_HOURS}h)")
         
         # Group summary line
         print(f"    Summary: scraped={scraped_count} | new={len(posts)} | saved={saved_count} | matches={len(relevant_posts)}")
