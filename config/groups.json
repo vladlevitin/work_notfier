@@ -20,6 +20,34 @@
       "enabled": true,
       "scroll_steps": 5,
       "description": "Group will be auto-named when first scraped"
+    },
+    {
+      "name": "Facebook Group 190866784788405",
+      "url": "https://www.facebook.com/groups/190866784788405/",
+      "enabled": true,
+      "scroll_steps": 5,
+      "description": "Group will be auto-named when first scraped"
+    },
+    {
+      "name": "Facebook Group 1181761538607230",
+      "url": "https://www.facebook.com/groups/1181761538607230/",
+      "enabled": true,
+      "scroll_steps": 5,
+      "description": "Group will be auto-named when first scraped"
+    },
+    {
+      "name": "Facebook Group 787828227982197",
+      "url": "https://www.facebook.com/groups/787828227982197",
+      "enabled": true,
+      "scroll_steps": 5,
+      "description": "Group will be auto-named when first scraped"
+    },
+    {
+      "name": "Facebook Group 845971775520305",
+      "url": "https://www.facebook.com/groups/845971775520305",
+      "enabled": true,
+      "scroll_steps": 5,
+      "description": "Group will be auto-named when first scraped"
     }
   ]
 }

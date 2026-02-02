@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import os
+import time
+import signal
+import sys
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -12,10 +15,84 @@ load_dotenv()
 # Import from new structure
 from src.scraper import scrape_facebook_group, filter_posts_by_keywords, print_posts
 from monitor import create_driver
-from src.database import save_posts, mark_as_notified
+from src.database import save_posts, mark_as_notified, post_exists
 from src.notifications import send_email_notification
-from src.ai.ai_processor import is_service_request
+from src.ai.ai_processor import is_service_request, is_driving_job
 from config.settings import load_facebook_groups, KEYWORDS
+
+# =============================================================================
+# CONFIGURATION TOGGLES
+# =============================================================================
+SCRAPE_INTERVAL_MINUTES = int(os.getenv("SCRAPE_INTERVAL_MINUTES", "0"))  # Default: 0 = loop immediately
+CLEAR_DATABASE_ON_START = True   # Set to False to keep existing posts
+MAX_POST_AGE_HOURS = 24  # Only notify for posts within this many hours
+# =============================================================================
+
+
+def is_post_recent(post: dict, max_hours: int = 24, log_skip: bool = True) -> bool:
+    """
+    Check if a post is within the specified time window.
+    Returns True if the post is recent enough to process.
+    
+    Args:
+        post: Post dictionary with timestamp field
+        max_hours: Maximum age in hours (default 24 = 1 day)
+        log_skip: Whether to print a message when skipping old posts
+    """
+    from src.scraper.timestamp_parser import parse_facebook_timestamp
+    
+    timestamp_str = post.get("timestamp", "")
+    if not timestamp_str:
+        return False
+    
+    try:
+        post_time = parse_facebook_timestamp(timestamp_str)
+        if not post_time:
+            return False
+        
+        cutoff_time = datetime.now() - timedelta(hours=max_hours)
+        is_recent = post_time >= cutoff_time
+        
+        if not is_recent and log_skip:
+            # Log skipped old post
+            age_hours = (datetime.now() - post_time).total_seconds() / 3600
+            print(f"    [SKIP] Post too old ({age_hours:.0f}h): {post.get('title', '')[:40]}...")
+        
+        return is_recent
+    except Exception:
+        # If we can't parse the timestamp, skip it to be safe
+        return False
+
+# Global flag for graceful shutdown
+shutdown_requested = False
+
+
+def clear_database() -> int:
+    """Clear all posts from the database. Returns count of deleted posts."""
+    from src.database.supabase_db import supabase
+    
+    try:
+        # Get count before deleting
+        count_result = supabase.table("posts").select("*", count="exact", head=True).execute()
+        count = count_result.count if count_result.count else 0
+        
+        if count > 0:
+            # Delete all posts
+            supabase.table("posts").delete().neq("post_id", "").execute()
+            print(f"[DB] Cleared {count} posts from database")
+        else:
+            print("[DB] Database already empty")
+        
+        return count
+    except Exception as e:
+        print(f"[ERROR] Failed to clear database: {e}")
+        return 0
+
+def signal_handler(signum, frame):
+    """Handle Ctrl+C gracefully."""
+    global shutdown_requested
+    print("\n\n[!] Shutdown requested. Finishing current cycle...")
+    shutdown_requested = True
 
 
 def check_openai_api_key() -> bool:
@@ -56,56 +133,210 @@ def check_openai_api_key() -> bool:
 
 
 def print_scrape_metadata(facebook_groups: list) -> None:
-    """Print detailed metadata about the scraping configuration."""
-    print("\n" + "="*80)
-    print("SCRAPING CONFIGURATION & METADATA")
-    print("="*80)
-    
-    # Summary statistics
+    """Print compact metadata about the scraping configuration."""
     total_groups = len(facebook_groups)
     total_scroll_steps = sum(g.get('scroll_steps', 5) for g in facebook_groups)
     
-    print(f"\n[SUMMARY]")
-    print(f"  Total groups to scrape: {total_groups}")
-    print(f"  Total scroll steps: {total_scroll_steps}")
-    print(f"  Keywords being searched: {len(KEYWORDS)}")
+    print(f"\n[CONFIG] {total_groups} groups | {total_scroll_steps} total scrolls | {len(KEYWORDS)} keywords")
+    print(f"[KEYWORDS] {', '.join(KEYWORDS[:8])}{'...' if len(KEYWORDS) > 8 else ''}")
+
+
+def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: int) -> dict:
+    """
+    Run a single scrape cycle through all Facebook groups.
+    Returns stats about the cycle.
+    """
+    cycle_start = datetime.now()
+    print(f"\n{'='*80}")
+    print(f"CYCLE {cycle_num} | {cycle_start.strftime('%H:%M:%S')} | {len(facebook_groups)} groups")
+    print(f"{'='*80}")
     
-    # Detailed group info
-    print(f"\n[FACEBOOK GROUPS TO SCRAPE]")
-    print("-" * 80)
-    
-    for idx, group in enumerate(facebook_groups, 1):
-        name = group['name']
-        url = group['url']
-        scroll_steps = group.get('scroll_steps', 5)
-        description = group.get('description', 'No description')
-        enabled = group.get('enabled', True)
+    all_scraped_posts = []
+    all_new_posts = []
+    all_relevant_posts = []
+    new_relevant_posts = []
+    skipped_existing = 0
+    skipped_unknown = 0
+    skipped_offers = 0
+
+    # Loop through all Facebook groups from config
+    for idx, group_config in enumerate(facebook_groups, 1):
+        if shutdown_requested:
+            print("\n[!] Shutdown requested...")
+            break
+            
+        group_name = group_config['name']
+        group_url = group_config['url']
+        scroll_steps = group_config.get('scroll_steps', 5)
         
-        print(f"\n  Group {idx}:")
-        print(f"    Name:         {name}")
-        print(f"    URL:          {url}")
-        print(f"    Scroll Steps: {scroll_steps}")
-        print(f"    Enabled:      {enabled}")
-        print(f"    Description:  {description}")
+        # Extract group ID for shorter display
+        group_id = group_url.split('/groups/')[-1].rstrip('/')
+        
+        print(f"\n[{idx}/{len(facebook_groups)}] {group_name[:50]}")
+        print(f"    Scraping...", end=" ", flush=True)
+        
+        # Scrape Facebook group - get ALL posts
+        try:
+            posts = scrape_facebook_group(driver, group_url, scroll_steps=scroll_steps)
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "invalid session" in error_msg or "no such window" in error_msg or "target window" in error_msg:
+                print(f"BROWSER CRASHED - restarting...")
+                # Return special signal to restart browser
+                return {"browser_crashed": True}
+            else:
+                print(f"ERROR: {str(e)[:50]}")
+                continue
+        
+        scraped_count = len(posts)
+        all_scraped_posts.extend(posts)
+        
+        # Filter out posts with unknown IDs (can't be properly tracked)
+        unknown_count = sum(1 for p in posts if p.get('post_id') == 'unknown')
+        if unknown_count > 0:
+            posts = [p for p in posts if p.get('post_id') != 'unknown']
+            skipped_unknown += unknown_count
+        
+        # EARLY CHECK: Filter out posts that already exist in database
+        existing_count = 0
+        if posts:
+            new_posts_only = []
+            for post in posts:
+                post_id = post.get('post_id')
+                if post_id and post_exists(post_id):
+                    existing_count += 1
+                else:
+                    new_posts_only.append(post)
+            skipped_existing += existing_count
+            posts = new_posts_only
+        
+        print(f"found {scraped_count}", end="")
+        if unknown_count > 0 or existing_count > 0:
+            print(f" (skip: {unknown_count} unknown, {existing_count} in DB)", end="")
+        print(f" -> {len(posts)} new")
+        
+        # Only run AI filtering on new posts
+        offers_count = 0
+        if openai_ok and posts:
+            print(f"    AI filtering...", end=" ", flush=True)
+            filtered_posts = []
+            
+            for post in posts:
+                if is_service_request(post.get('title', ''), post.get('text', '')):
+                    filtered_posts.append(post)
+                else:
+                    offers_count += 1
+            
+            skipped_offers += offers_count
+            posts = filtered_posts
+            print(f"kept {len(posts)} requests, removed {offers_count} offers")
+        
+        # Filter out old posts BEFORE saving (don't save posts older than MAX_POST_AGE_HOURS)
+        if posts:
+            recent_posts_to_save = []
+            old_count = 0
+            for post in posts:
+                if is_post_recent(post, MAX_POST_AGE_HOURS, log_skip=False):
+                    recent_posts_to_save.append(post)
+                else:
+                    old_count += 1
+            
+            if old_count > 0:
+                print(f"    Filtered {old_count} posts older than {MAX_POST_AGE_HOURS}h")
+            posts = recent_posts_to_save
+        
+        # Save filtered posts to database IMMEDIATELY
+        saved_count = 0
+        if posts:
+            print(f"    Saving...", end=" ", flush=True)
+            new_count, db_skipped_count = save_posts(posts)
+            saved_count = new_count
+            print(f"saved {new_count} posts")
+            
+            if new_count > 0:
+                all_new_posts.extend(posts[:new_count])
+        
+        # Filter for relevant keywords
+        relevant_posts = filter_posts_by_keywords(posts)
+        all_relevant_posts.extend(relevant_posts)
+        
+        # Send email notification IMMEDIATELY for this group's new relevant posts
+        if relevant_posts:
+            # Filter out old posts (only notify for posts within MAX_POST_AGE_HOURS)
+            recent_posts = [p for p in relevant_posts if is_post_recent(p, MAX_POST_AGE_HOURS)]
+            
+            if recent_posts:
+                print(f"    MATCH! {len(recent_posts)} keyword matches -> checking if driving jobs...")
+                
+                # Send ONE email per post, but only if AI confirms it's a driving job
+                emails_sent = 0
+                for post in recent_posts:
+                    # Use AI to verify this is actually a driving/transport job
+                    if is_driving_job(post.get('title', ''), post.get('text', '')):
+                        send_email_notification([post], group_url)
+                        mark_as_notified([post["post_id"]])
+                        new_relevant_posts.append(post)
+                        emails_sent += 1
+                    else:
+                        print(f"    [SKIP] Not a driving job: {post.get('title', '')[:40]}...")
+                
+                if emails_sent > 0:
+                    print(f"    Sent {emails_sent} emails for driving jobs")
+            elif relevant_posts:
+                print(f"    MATCH! {len(relevant_posts)} posts match keywords but all too old (>{MAX_POST_AGE_HOURS}h)")
+        
+        # Group summary line
+        print(f"    Summary: scraped={scraped_count} | new={len(posts)} | saved={saved_count} | matches={len(relevant_posts)}")
     
-    # Keywords info
-    print(f"\n[KEYWORDS ({len(KEYWORDS)} total)]")
-    print("-" * 80)
-    print(f"  {', '.join(KEYWORDS)}")
+    # Display cycle results
+    cycle_duration = (datetime.now() - cycle_start).total_seconds()
+    print(f"\n{'='*80}")
+    print(f"CYCLE {cycle_num} COMPLETE | {cycle_duration:.0f}s")
+    print(f"{'='*80}")
+    print(f"  Scraped: {len(all_scraped_posts):>4} posts from {len(facebook_groups)} groups")
+    print(f"  Skipped: {skipped_unknown:>4} unknown ID | {skipped_existing:>4} already in DB | {skipped_offers:>4} service offers")
+    print(f"  Saved:   {len(all_new_posts):>4} new posts to database")
+    print(f"  Matches: {len(all_relevant_posts):>4} posts match keywords")
+    if new_relevant_posts:
+        print(f"  Emails:  {len(new_relevant_posts):>4} notifications sent")
     
-    print("\n" + "="*80)
-    print("Starting scrape...")
-    print("="*80 + "\n")
+    return {
+        "scraped": len(all_scraped_posts),
+        "skipped_existing": skipped_existing,
+        "skipped_unknown": skipped_unknown,
+        "skipped_offers": skipped_offers,
+        "new_saved": len(all_new_posts),
+        "relevant": len(all_relevant_posts),
+        "notified": len(new_relevant_posts),
+        "duration": cycle_duration
+    }
 
 
 def main() -> int:
-    """Main function to run the Facebook work notifier."""
+    """Main function to run the Facebook work notifier in continuous loop."""
+    global shutdown_requested
+    
+    # Set up signal handler for graceful shutdown
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
     # Display start info
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print("\n" + "="*80)
-    print("FACEBOOK WORK NOTIFIER")
+    print("FACEBOOK WORK NOTIFIER - CONTINUOUS MONITORING MODE")
     print(f"Started: {timestamp}")
+    print(f"Scrape interval: {SCRAPE_INTERVAL_MINUTES} minutes")
+    print("Press Ctrl+C to stop gracefully")
     print("="*80)
+    
+    # Clear database FIRST if toggle is enabled
+    if CLEAR_DATABASE_ON_START:
+        print("\n" + "="*80)
+        print("CLEARING DATABASE - CLEAR_DATABASE_ON_START = True")
+        print("="*80)
+        clear_database()
+    else:
+        print("\n[CONFIG] CLEAR_DATABASE_ON_START = False (keeping existing posts)")
     
     # Check OpenAI API key
     print("\n[CONFIG] Checking API keys...")
@@ -124,113 +355,78 @@ def main() -> int:
     # Create browser driver
     print("\n[*] Starting browser...")
     driver = create_driver()
-
-    all_scraped_posts = []
-    all_new_posts = []
-    all_relevant_posts = []
-    new_relevant_posts = []
+    
+    cycle_num = 0
+    total_stats = {
+        "cycles": 0,
+        "total_scraped": 0,
+        "total_skipped": 0,
+        "total_new": 0,
+        "total_notified": 0
+    }
 
     try:
-        # Loop through all Facebook groups from config
-        for idx, group_config in enumerate(facebook_groups, 1):
-            group_name = group_config['name']
-            group_url = group_config['url']
-            scroll_steps = group_config.get('scroll_steps', 5)
+        while not shutdown_requested:
+            cycle_num += 1
             
-            print(f"\n{'='*80}")
-            print(f"[{idx}/{len(facebook_groups)}] Scraping: {group_name}")
-            print(f"    URL: {group_url}")
-            print(f"    Scrolls: {scroll_steps}")
-            print(f"{'='*80}")
+            # Run a scrape cycle
+            stats = run_scrape_cycle(driver, facebook_groups, openai_ok, cycle_num)
             
-            # Scrape Facebook group - get ALL posts
-            posts = scrape_facebook_group(driver, group_url, scroll_steps=scroll_steps)
-            all_scraped_posts.extend(posts)
+            # Check if browser crashed and needs restart
+            if stats.get("browser_crashed"):
+                print("[*] Restarting browser...")
+                try:
+                    driver.quit()
+                except:
+                    pass
+                driver = create_driver()
+                print("[OK] Browser restarted, continuing...")
+                continue
             
-            print(f"\n[OK] Scraped {len(posts)} posts from this group")
+            # Update total stats
+            total_stats["cycles"] += 1
+            total_stats["total_scraped"] += stats.get("scraped", 0)
+            total_stats["total_skipped"] += stats.get("skipped_existing", 0)
+            total_stats["total_new"] += stats.get("new_saved", 0)
+            total_stats["total_notified"] += stats.get("notified", 0)
             
-            # Filter out posts with unknown IDs (can't be properly tracked)
-            if posts:
-                unknown_count = sum(1 for p in posts if p.get('post_id') == 'unknown')
-                if unknown_count > 0:
-                    posts = [p for p in posts if p.get('post_id') != 'unknown']
-                    print(f"[FILTER] Skipped {unknown_count} posts with unknown IDs")
+            if shutdown_requested:
+                break
             
-            # Filter out service offers (keep only service requests) using AI
-            if openai_ok and posts:
-                print(f"[AI] Filtering out service offers (keeping only job requests)...")
-                filtered_posts = []
-                offers_count = 0
-                
-                for post in posts:
-                    if is_service_request(post.get('title', ''), post.get('text', '')):
-                        filtered_posts.append(post)
-                    else:
-                        offers_count += 1
-                        print(f"    [SKIP] Service offer: {post.get('title', '')[:50]}...")
-                
-                print(f"    [AI] Kept {len(filtered_posts)} requests, filtered out {offers_count} offers")
-                posts = filtered_posts
+            # Wait for next cycle
+            next_run = datetime.now().strftime("%H:%M:%S")
+            wait_seconds = SCRAPE_INTERVAL_MINUTES * 60
+            print(f"\n[WAIT] Next scrape in {SCRAPE_INTERVAL_MINUTES} minutes...")
+            print(f"       Current time: {next_run}")
+            print(f"       Press Ctrl+C to stop")
             
-            # Save filtered posts to database
-            if posts:
-                print(f"[*] Saving to database...")
-                new_count, skipped_count = save_posts(posts)
-                print(f"    [OK] New posts saved: {new_count}")
-                print(f"    [SKIP] Duplicates skipped: {skipped_count}")
-                
-                # Track which posts were new
-                if new_count > 0:
-                    # Get the newly saved posts
-                    new_posts = [p for p in posts if not skipped_count or posts.index(p) < new_count]
-                    all_new_posts.extend(new_posts)
-            
-            # Filter for relevant keywords
-            relevant_posts = filter_posts_by_keywords(posts)
-            all_relevant_posts.extend(relevant_posts)
-            print(f"[FILTER] Found {len(relevant_posts)} posts matching keywords")
-            
-            # Only notify about NEW posts that match keywords
-            new_and_relevant = [p for p in relevant_posts if p in all_new_posts]
-            new_relevant_posts.extend(new_and_relevant)
-            
-            if new_and_relevant:
-                print(f"[EMAIL] {len(new_and_relevant)} new posts match keywords and will trigger email")
+            # Sleep in small intervals to allow for graceful shutdown
+            for _ in range(wait_seconds):
+                if shutdown_requested:
+                    break
+                time.sleep(1)
         
-        # Display results
+        # Final summary
         print(f"\n{'='*80}")
-        print(f"SUMMARY")
+        print("FINAL SESSION SUMMARY")
         print(f"{'='*80}")
-        print(f"  Total posts scraped: {len(all_scraped_posts)}")
-        print(f"  New posts saved to database: {len(all_new_posts)}")
-        print(f"  Posts matching keywords: {len(all_relevant_posts)}")
-        print(f"  NEW relevant posts for notification: {len(new_relevant_posts)}")
-        
-        print(f"\n  Keywords: {', '.join(KEYWORDS[:10])}{'...' if len(KEYWORDS) > 10 else ''}")
-        
-        if new_relevant_posts:
-            print_posts(new_relevant_posts, "New relevant posts for notification")
-            
-            # Send email notification
-            print(f"\n[EMAIL] Sending email notification with {len(new_relevant_posts)} new matching posts...")
-            send_email_notification(new_relevant_posts, facebook_groups[0]['url'])
-            
-            # Mark posts as notified
-            post_ids = [p["post_id"] for p in new_relevant_posts]
-            mark_as_notified(post_ids)
-            
-            print("[OK] Email sent and posts marked as notified!")
-        else:
-            print("\n[OK] No new relevant posts to notify about")
-
-        print("\nScraping finished. Press Enter to close.")
-        input()
+        print(f"  Total cycles completed: {total_stats['cycles']}")
+        print(f"  Total posts scraped: {total_stats['total_scraped']}")
+        print(f"  Total skipped (already in DB): {total_stats['total_skipped']}")
+        print(f"  Total new posts saved: {total_stats['total_new']}")
+        print(f"  Total notifications sent: {total_stats['total_notified']}")
+        print(f"\n[OK] Graceful shutdown complete.")
 
     finally:
+        print("\n[*] Closing browser...")
         driver.quit()
 
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print("\n[!] Interrupted by user")
+        sys.exit(0)

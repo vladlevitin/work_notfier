@@ -83,8 +83,8 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
             parsed_time = parse_facebook_timestamp(post["timestamp"])
             if parsed_time:
                 posted_at = parsed_time.isoformat()
-        except Exception as e:
-            print(f"  [WARN] Could not parse timestamp: {e}")
+        except Exception:
+            pass
         
         # Get AI-extracted category
         category = "General"
@@ -92,8 +92,8 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
             from src.ai.ai_processor import process_post_with_ai
             ai_result = process_post_with_ai(post["title"], post["text"], post["post_id"])
             category = ai_result.get("category", "General")
-        except Exception as e:
-            print(f"  [WARN] AI category extraction failed: {e}")
+        except Exception:
+            pass
         
         # Build insert data with basic columns
         insert_data = {
@@ -113,12 +113,6 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
             insert_data["posted_at"] = posted_at
         
         supabase.table("posts").insert(insert_data).execute()
-        
-        if posted_at:
-            print(f"  [SAVED] {post['title'][:40]}... (posted: {posted_at[:16]})")
-        else:
-            print(f"  [SAVED] {post['title'][:50]}...")
-        
         return True
     except Exception as e:
         error_str = str(e)
@@ -136,13 +130,10 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
                     "notified": False
                 }
                 supabase.table("posts").insert(insert_data_basic).execute()
-                print(f"  [SAVED] {post['title'][:50]}... (without category)")
                 return True
-            except Exception as e2:
-                print(f"  [ERROR] Saving post: {e2}")
+            except Exception:
                 return False
         else:
-            print(f"  [ERROR] Saving post: {e}")
             return False
 
 

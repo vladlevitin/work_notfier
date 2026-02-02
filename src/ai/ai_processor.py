@@ -18,14 +18,16 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Define available categories with descriptions
 CATEGORIES = {
-    "Electrical": "Electrician work, wiring, lights, mirrors with electrical, outlets, fuse boxes, stove guards",
+    "Electrical": "Electrician work, wiring, lights, mirrors with electrical connections, outlets, fuse boxes, stove guards",
     "Plumbing": "Pipes, water, drains, toilets, sinks, showers, bathrooms (water-related)",
-    "Transport / Moving": "Moving items, transporting goods, pickup/delivery, using vehicles",
-    "Painting / Renovation": "Painting walls, spackling, wallpaper, renovation, construction work", 
-    "Cleaning / Garden": "House cleaning, garden work, lawn care, window washing",
-    "Assembly / Furniture": "IKEA assembly, furniture mounting, shelves, TV mounting",
-    "Mechanic / Car": "Car repairs, brakes, mechanical work on vehicles",
-    "General": "Anything that doesn't fit the other categories"
+    "Transport / Moving": "Moving furniture/items from one place to another, helping with relocation, transporting goods, pickup/delivery services, moving companies (flytting, flytte, hente, levere, transport)",
+    "Painting / Renovation": "Painting walls, spackling, wallpaper, renovation, construction work, tiling (fliser), carpentry",
+    "Cleaning / Garden": "House cleaning, garden work, lawn care, window washing, snow removal",
+    "Assembly / Furniture": "IKEA assembly, furniture mounting, shelves, TV mounting, disassembly",
+    "Car Mechanic": "Car repairs, car inspections, brakes, engine, mechanical work on vehicles, tire changes (dekk), bilmekaniker, car sounds/noises, vehicle diagnostics - ANY work ON the car itself",
+    "Handyman / Misc": "Small repairs, odd jobs, demolition, removal of items",
+    "IT / Tech": "Computer help, phone repair, smart home, technical support",
+    "General": "Only use if NOTHING else fits"
 }
 
 CATEGORY_LIST = list(CATEGORIES.keys())
@@ -43,7 +45,7 @@ def is_service_request(title: str, text: str) -> bool:
         content = f"{title}\n{text}"
         
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5.2-chat-latest",
             messages=[
                 {"role": "system", "content": """You analyze Norwegian job postings to determine if they are:
 - SERVICE_REQUEST: Someone NEEDS help/service (e.g., "Trenger hjelp med...", "Ser etter noen som kan...", "Ønsker å få...")
@@ -57,12 +59,9 @@ Respond with ONLY one word: REQUEST or OFFER"""},
         )
         
         result = response.choices[0].message.content.strip().upper()
-        print(f"    [AI] Post type: {result}")
-        
         return "REQUEST" in result
         
     except Exception as e:
-        print(f"    [AI] Classification failed: {e}")
         # Default to keeping the post if classification fails
         return True
 
@@ -91,11 +90,18 @@ CATEGORIES (choose the MOST SPECIFIC one that matches):
 Post Title: {title}
 Post Content: {text}
 
-IMPORTANT: 
-- If the post mentions "elektriker" (electrician), lights, wiring, outlets, mirrors with electrical connections, or any electrical work -> choose "Electrical"
-- If the post mentions moving/transporting items from A to B -> choose "Transport / Moving"
-- If the post mentions painting, spackling, walls -> choose "Painting / Renovation"
-- Be SPECIFIC - don't default to General if a specific category fits
+CRITICAL RULES - READ CAREFULLY:
+1. "Car Mechanic" = ANY work ON a car (repairs, inspections, tire changes, noises, diagnostics, brakes, engine)
+   - "bilmekaniker", "verksted", "dekk", "lyd på bilen", "sjekke bilen" = Car Mechanic
+   
+2. "Transport / Moving" = Moving ITEMS/FURNITURE from place A to place B, helping someone relocate
+   - "flytte", "flytting", "hente noe", "levere noe", "transport av møbler" = Transport / Moving
+   - This is NOT about fixing cars, it's about transporting things!
+
+3. "Electrical" = Electrician work, wiring, lights, outlets, fuse boxes
+   - "elektriker", "stikkontakt", "lys", "speil med lys" = Electrical
+
+4. Do NOT use "General" unless absolutely nothing else fits
 
 Respond in JSON format:
 {{
@@ -109,9 +115,12 @@ Respond in JSON format:
 }}"""
 
         response = client.chat.completions.create(
-            model="gpt-4o-mini",  # Fast and cost-effective
+            model="gpt-5.2-chat-latest",  # Fast and cost-effective
             messages=[
-                {"role": "system", "content": "You are a job posting analyzer for Norwegian small jobs. Classify posts accurately into the MOST SPECIFIC category. Always respond with valid JSON only."},
+                {"role": "system", "content": """You are a job posting analyzer for Norwegian small jobs. 
+CRITICAL: Car mechanic work (repairs, inspections, tire changes) is "Car Mechanic", NOT "Transport / Moving".
+Transport/Moving is ONLY for moving furniture/items between locations.
+Classify posts accurately into the MOST SPECIFIC category. Always respond with valid JSON only."""},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.1,  # Lower temperature for more consistent classification
@@ -135,8 +144,6 @@ Respond in JSON format:
             else:
                 category = "General"
         
-        print(f"    [AI] Category: {category}")
-        
         return {
             "category": category,
             "location": result.get("location", "Unknown"),
@@ -145,7 +152,7 @@ Respond in JSON format:
         }
         
     except Exception as e:
-        print(f"AI processing failed for post {post_id}: {str(e)}")
+        # Silently handle AI failures
         # Return fallback values
         return {
             "category": "General",
@@ -153,6 +160,50 @@ Respond in JSON format:
             "ai_features": {},
             "ai_processed": False
         }
+
+
+def is_driving_job(title: str, text: str) -> bool:
+    """
+    Use AI to determine if a post is PRIMARILY a driving/transport job.
+    
+    Returns True only if the MAIN work is driving, transport, or moving items.
+    Returns False if driving/transport is just a minor part of another job
+    (e.g., kitchen installation that needs transport).
+    """
+    content = f"Title: {title}\n\nPost content:\n{text[:1500]}"
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-5.2-chat-latest",
+            messages=[
+                {"role": "system", "content": """You determine if a job post is PRIMARILY a driving/transport job.
+
+Answer "YES" only if the MAIN work requested is:
+- Driving a vehicle (being a driver/chauffeur)
+- Transporting items from A to B (the main job is the transport itself)
+- Moving/relocation services (flytting, moving help)
+- Delivery/pickup services where driving is the main task
+- Looking for someone with a vehicle to transport things
+
+Answer "NO" if:
+- Transport is just a SMALL PART of a larger job (e.g., kitchen renovation that includes transport)
+- The main job is something else (plumbing, painting, assembly) even if transport is mentioned
+- Someone needs help with manual work that happens to mention transport
+- The post is about car repairs (mechanic work, not driving)
+
+Be strict - only say YES if driving/transport IS the main job being requested."""},
+                {"role": "user", "content": f"Is this PRIMARILY a driving/transport job? Answer only YES or NO.\n\n{content}"}
+            ],
+            temperature=0.1,
+            max_tokens=10
+        )
+        
+        result = response.choices[0].message.content.strip().upper()
+        return "YES" in result
+        
+    except Exception:
+        # If AI fails, be conservative and don't send email
+        return False
 
 
 def should_process_with_ai(post_id: str, existing_data: Optional[Dict] = None) -> bool:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import random
 import re
 import time
+from datetime import datetime, timedelta
 from typing import TypedDict
 
 from selenium.webdriver.common.by import By
@@ -12,6 +13,60 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import StaleElementReferenceException
+
+
+def convert_relative_to_full_timestamp(timestamp_str: str) -> str:
+    """
+    Convert relative timestamps like '3h', '2d' to full date format.
+    Returns the original string if it's already a full timestamp or can't be parsed.
+    """
+    now = datetime.now()
+    timestamp_str = timestamp_str.strip()
+    
+    # Already a full timestamp (contains month name or date pattern)
+    if any(month in timestamp_str.lower() for month in ['january', 'february', 'march', 'april', 
+            'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
+            'januar', 'februar', 'mars', 'april', 'mai', 'juni', 'juli', 'august',
+            'september', 'oktober', 'november', 'desember']):
+        return timestamp_str
+    
+    result_time = None
+    
+    # Format: "5m", "30m" (minutes ago)
+    match = re.match(r'^(\d+)m$', timestamp_str)
+    if match:
+        minutes = int(match.group(1))
+        result_time = now - timedelta(minutes=minutes)
+    
+    # Format: "7h", "10h" (hours ago)
+    if not result_time:
+        match = re.match(r'^(\d+)h$', timestamp_str)
+        if match:
+            hours = int(match.group(1))
+            result_time = now - timedelta(hours=hours)
+    
+    # Format: "2d", "5d" (days ago)
+    if not result_time:
+        match = re.match(r'^(\d+)d$', timestamp_str)
+        if match:
+            days = int(match.group(1))
+            result_time = now - timedelta(days=days)
+    
+    # Format: "1w", "2w" (weeks ago)
+    if not result_time:
+        match = re.match(r'^(\d+)w$', timestamp_str)
+        if match:
+            weeks = int(match.group(1))
+            result_time = now - timedelta(weeks=weeks)
+    
+    # Convert to readable format
+    if result_time:
+        # Format: "Sunday 1 February 2026 at 19:30"
+        return result_time.strftime("%A %d %B %Y at %H:%M")
+    
+    # Return original if we couldn't parse
+    return timestamp_str
 
 
 class Post(TypedDict):
@@ -69,7 +124,6 @@ def click_see_more(driver: WebDriver, parent_element) -> bool:
                     time.sleep(0.2)
                     driver.execute_script("arguments[0].click();", btn)
                     time.sleep(0.5)  # Wait for text to expand
-                    print(f"      DEBUG: [EXPAND] Clicked 'See more' button (role=button)")
                     return True
             except Exception:
                 continue
@@ -88,7 +142,6 @@ def click_see_more(driver: WebDriver, parent_element) -> bool:
                             time.sleep(0.2)
                             driver.execute_script("arguments[0].click();", elem)
                             time.sleep(0.5)
-                            print(f"      DEBUG: [EXPAND] Clicked '{pattern}' element")
                             return True
                     except Exception:
                         continue
@@ -108,7 +161,6 @@ def click_see_more(driver: WebDriver, parent_element) -> bool:
                             time.sleep(0.2)
                             driver.execute_script("arguments[0].click();", btn)
                             time.sleep(0.5)
-                            print(f"      DEBUG: [EXPAND] Clicked 'See more' in message container")
                             return True
                     except Exception:
                         continue
@@ -148,7 +200,6 @@ def expand_all_see_more(driver: WebDriver) -> int:
                 continue
         
         if clicked > 0:
-            print(f"      DEBUG: [EXPAND] Clicked {clicked} 'See more' buttons on page")
             time.sleep(1.0)  # Wait for all expansions to complete (longer wait for DOM updates)
             
     except Exception as e:
@@ -213,7 +264,6 @@ def get_timestamp_from_hover(driver: WebDriver, timestamp_element) -> str | None
                     # "Sunday 1 February 2026 at 13:56" (day name + date + year + time)
                     # "1 February at 13:56" (date + time, no year)
                     if has_month and (has_time or has_year):
-                        print(f"      DEBUG: [TOOLTIP] Got full datetime: '{tooltip_text}'")
                         # Move mouse away to close tooltip
                         try:
                             actions.move_by_offset(100, 100).perform()
@@ -234,7 +284,6 @@ def get_timestamp_from_hover(driver: WebDriver, timestamp_element) -> str | None
             has_year = any(y in aria_label for y in ["2024", "2025", "2026", "2027"])
             
             if has_month and (has_time or has_year):
-                print(f"      DEBUG: [ARIA-LABEL] Got full datetime: '{aria_label}'")
                 return aria_label
         
         # Move mouse away
@@ -243,8 +292,8 @@ def get_timestamp_from_hover(driver: WebDriver, timestamp_element) -> str | None
         except:
             pass
         
-    except Exception as e:
-        print(f"      DEBUG: Hover failed: {e}")
+    except Exception:
+        pass
     
     return None
 
@@ -255,8 +304,6 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
     Returns a list of all posts with title, text, URL, timestamp, and group info.
     """
     driver.get(group_url)
-    print("Edge opened with profile folder")
-    print("Navigated to group:", group_url)
 
     wait = WebDriverWait(driver, 20)
     wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "[role='feed']")))
@@ -270,8 +317,6 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
 
     # Random initial pause (1-3 seconds) - simulate human arriving at page
     time.sleep(random.uniform(1.0, 3.0))
-
-    print(f"Scrolling {scroll_steps} times...")
 
     posts_dict: dict[str, Post] = {}
 
@@ -288,12 +333,15 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
             # Fallback selector
             text_elements = driver.find_elements(By.CSS_SELECTOR, "[role='feed'] [data-ad-preview='message']")
         
-        print(f"  Found {len(text_elements)} post elements on this scroll...")
-        
         for text_element in text_elements:
             try:
                 # Get the text (already expanded by expand_all_see_more)
-                text = text_element.text.strip()
+                # Wrap in try/except for stale elements
+                try:
+                    text = text_element.text.strip()
+                except StaleElementReferenceException:
+                    # Element was removed from DOM (page updated), skip silently
+                    continue
                 
                 if not text:
                     continue
@@ -320,12 +368,10 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
                         
                         # Debug: show what we're finding (use safe ASCII)
                         # if level < 5:
-                        #     print(f"      DEBUG: Level {level}, tag={parent_tag}, role={parent_role}")
                         
                         # Check for article role OR a div that contains post links
                         if parent_role == "article":
                             article_found = True
-                            print(f"      DEBUG: [OK] Found article at level {level}")
                             all_links = parent.find_elements(By.TAG_NAME, "a")
                             break
                         elif parent_tag == "div" and level >= 5:
@@ -345,12 +391,10 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
                                 
                                 if has_post_link:
                                     article_found = True
-                                    print(f"      DEBUG: [OK] Found post container (div with post links) at level {level}")
                                     all_links = test_links
                                     break
                     
                     if article_found:
-                        print(f"      DEBUG: Found {len(all_links)} links in container")
                         
                         # Look through all links for post URLs
                         for link in all_links:
@@ -359,30 +403,22 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
                                 if not link_url:
                                     continue
                                 
-                                # Debug: print first few URLs to see what we're getting
-                                if all_links.index(link) < 3:
-                                    print(f"      DEBUG: Sample URL: {link_url[:100]}...")
-                                
                                 # Check if this is a post URL
                                 if "/groups/" in link_url and ("/posts/" in link_url or "/permalink/" in link_url or "story_fbid=" in link_url):
                                     url = link_url
-                                    print(f"      DEBUG: Found post URL: {url}")
                                     
                                     # Extract post ID from URL - try multiple patterns
                                     match = re.search(r'/posts/(\d+)', url)
                                     if match:
                                         post_id = match.group(1)
-                                        print(f"      DEBUG: Extracted post_id from /posts/: {post_id}")
                                         break
                                     match = re.search(r'/permalink/(\d+)', url)
                                     if match:
                                         post_id = match.group(1)
-                                        print(f"      DEBUG: Extracted post_id from /permalink/: {post_id}")
                                         break
                                     match = re.search(r'story_fbid=(\d+)', url)
                                     if match:
                                         post_id = match.group(1)
-                                        print(f"      DEBUG: Extracted post_id from story_fbid: {post_id}")
                                         break
                             except Exception as e:
                                 continue
@@ -400,16 +436,11 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
                                 timestamp_links = parent.find_elements(By.CSS_SELECTOR, 
                                     "abbr, span.x4k7w5x, span.x1heor9g, a[href*='posts'] span, a[href*='permalink'] span")
                             
-                            print(f"      DEBUG: Found {len(timestamp_links)} potential timestamp elements")
                             
                             timestamp_found = False
                             for idx, elem in enumerate(timestamp_links):
                                 try:
                                     text_content = elem.text.strip()
-                                    
-                                    # Debug first few timestamp candidates
-                                    if idx < 3:
-                                        print(f"      DEBUG: Timestamp candidate {idx}: '{text_content}'")
                                     
                                     # Check if this looks like a relative timestamp (7m, 2h, Yesterday, etc.)
                                     if text_content and any(indicator in text_content.lower() 
@@ -424,57 +455,55 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
                                         if full_datetime:
                                             # Clean up any trailing characters
                                             timestamp = full_datetime.rstrip(' ·').strip()
-                                            print(f"      DEBUG: [OK] Got FULL timestamp from hover: '{timestamp}'")
                                             timestamp_found = True
                                             break
                                         else:
                                             # Fall back to the text content, cleaned up
                                             timestamp = text_content.rstrip(' ·').strip()
-                                            print(f"      DEBUG: [OK] Using relative timestamp: '{timestamp}'")
                                             timestamp_found = True
                                             break
                                     
                                     # Also check the title attribute (abbr tags often have full date in title)
                                     title_attr = elem.get_attribute("title")
                                     if title_attr:
-                                        print(f"      DEBUG: Found title attribute: '{title_attr}'")
                                         timestamp = title_attr
                                         timestamp_found = True
                                         break
                                         
-                                except Exception as e:
+                                except Exception:
                                     continue
-                            
-                            if not timestamp_found:
-                                print(f"      DEBUG: No timestamp found, using 'Recently'")
-                                
-                        except Exception as e:
-                            print(f"      DEBUG: Error finding timestamp: {e}")
+                        except Exception:
+                            pass
                     
                     if not article_found:
                         pass  # Could not find post container
                         
-                except Exception as e:
-                    print(f"    Warning: Could not traverse to article parent: {e}")
+                except Exception:
+                    pass  # Could not traverse to article parent
                 
                 # Use post_id as key to avoid duplicates, but fallback to text if post_id is unknown
                 dict_key = post_id if post_id != "unknown" else text[:100]
                 
                 if dict_key not in posts_dict:
+                    # Convert relative timestamps to full format before storing
+                    full_timestamp = convert_relative_to_full_timestamp(timestamp)
+                    
                     posts_dict[dict_key] = Post(
                         post_id=post_id,
                         title=title,
                         text=text,
                         url=url,
-                        timestamp=timestamp,
+                        timestamp=full_timestamp,
                         group_name=group_name,
                         group_url=group_url,
                     )
-                    print(f"    Captured post: {title} (ID: {post_id})")
-                
+            except StaleElementReferenceException:
+                # Element became stale (page updated), skip silently
+                continue
             except Exception as e:
-                # Skip posts that can't be parsed
-                print(f"    Error parsing post: {e}")
+                # Skip posts that can't be parsed (only log non-stale errors briefly)
+                if "stale" not in str(e).lower():
+                    print(f"    [WARN] Skipped post: {str(e)[:50]}...")
                 continue
 
         # Scroll down with random behavior
@@ -487,14 +516,12 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
         
         # Random pause after scrolling (2-5 seconds) - simulate human reading
         pause_time = random.uniform(2.0, 5.0)
-        print(f"  Scroll {scroll_num + 1}/{scroll_steps} - pausing for {pause_time:.1f}s...")
         time.sleep(pause_time)
 
     # Final pause before collecting remaining posts (1-2 seconds)
     time.sleep(random.uniform(1.0, 2.0))
 
     # Final collection after scrolling
-    print("\nFinal collection of posts...")
     # Expand all "See more" buttons before final collection
     expand_all_see_more(driver)
     
@@ -505,7 +532,10 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
     for text_element in text_elements:
         try:
             # Get the text (already expanded by expand_all_see_more)
-            text = text_element.text.strip()
+            try:
+                text = text_element.text.strip()
+            except StaleElementReferenceException:
+                continue
             
             if not text:
                 continue
@@ -653,35 +683,41 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
                                     full_dt = get_timestamp_from_hover(driver, elem)
                                     if full_dt:
                                         timestamp = full_dt.rstrip(' ·').strip()
-                                        print(f"      DEBUG: [FALLBACK] Got timestamp: '{timestamp}'")
                                         break
                                     elif len(elem_text) < 30:
                                         timestamp = elem_text.rstrip(' ·').strip()
-                                        print(f"      DEBUG: [FALLBACK] Using text: '{timestamp}'")
                                         break
                             except:
                                 continue
                         
                         if timestamp != "Recently":
                             break
-                except Exception as e:
-                    print(f"      DEBUG: Fallback timestamp search failed: {e}")
+                except Exception:
+                    pass
             
             dict_key = post_id if post_id != "unknown" else text[:100]
             
             if dict_key not in posts_dict:
+                # Convert relative timestamps to full format before storing
+                full_timestamp = convert_relative_to_full_timestamp(timestamp)
+                
                 posts_dict[dict_key] = Post(
                     post_id=post_id,
                     title=title,
                     text=text,
                     url=url,
-                    timestamp=timestamp,
+                    timestamp=full_timestamp,
                     group_name=group_name,
                     group_url=group_url,
                 )
             
+        except StaleElementReferenceException:
+            # Element became stale (page updated), skip silently
+            continue
         except Exception as e:
-            print(f"Error parsing post: {e}")
+            # Only log non-stale errors briefly
+            if "stale" not in str(e).lower():
+                print(f"    [WARN] Skipped post: {str(e)[:50]}...")
             continue
 
     return list(posts_dict.values())

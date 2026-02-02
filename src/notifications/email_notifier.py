@@ -23,26 +23,30 @@ class Post(TypedDict):
 
 
 def load_env_config() -> dict[str, str]:
-    """Load email configuration from .env file."""
-    env_path = Path(__file__).parent / ".env"
-    if not env_path.exists():
-        raise SystemExit(
-            "Missing .env file. Create one with GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, GRAPH_SENDER"
-        )
-
-    load_dotenv(env_path)
+    """Load email configuration from .env file in project root."""
+    # Try to find .env in project root (3 levels up from this file)
+    project_root = Path(__file__).parent.parent.parent
+    env_path = project_root / ".env"
+    
+    if env_path.exists():
+        load_dotenv(env_path)
+    else:
+        # .env should already be loaded by main.py, just proceed
+        pass
 
     config = {
-        "tenant_id": os.getenv("GRAPH_TENANT_ID", "").strip(),
-        "client_id": os.getenv("GRAPH_CLIENT_ID", "").strip(),
-        "client_secret": os.getenv("GRAPH_CLIENT_SECRET", "").strip(),
-        "sender": os.getenv("GRAPH_SENDER", "").strip(),
-        "recipient": "levitinvlad@hotmail.com",
+        "tenant_id": os.getenv("GRAPH_TENANT_ID", os.getenv("TENANT_ID", "")).strip(),
+        "client_id": os.getenv("GRAPH_CLIENT_ID", os.getenv("CLIENT_ID", "")).strip(),
+        "client_secret": os.getenv("GRAPH_CLIENT_SECRET", os.getenv("CLIENT_SECRET", "")).strip(),
+        "sender": os.getenv("GRAPH_SENDER", os.getenv("SENDER_EMAIL", "")).strip(),
+        "recipient": os.getenv("RECIPIENT_EMAIL", "levitinvlad@hotmail.com").strip(),
     }
 
     missing = [k for k, v in config.items() if not v and k != "recipient"]
     if missing:
-        raise SystemExit(f"Missing required env vars: {', '.join(missing)}")
+        print(f"[WARN] Email notification skipped - missing env vars: {', '.join(missing)}")
+        print("       Set GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, GRAPH_SENDER in .env")
+        return {}
 
     return config
 
@@ -63,9 +67,26 @@ def get_graph_token(tenant_id: str, client_id: str, client_secret: str) -> str:
 def send_email_notification(posts: list[Post], group_url: str) -> None:
     """Send email notification with matched Facebook posts."""
     config = load_env_config()
+    
+    # Skip if config is empty (missing credentials)
+    if not config:
+        return
+    
     token = get_graph_token(config["tenant_id"], config["client_id"], config["client_secret"])
 
-    subject = f"🚗 {len(posts)} new driving/moving jobs found on Facebook"
+    # Build subject: Category | DateTime | Description
+    if len(posts) == 1:
+        post = posts[0]
+        category = post.get("category", "General")
+        post_time = post.get("timestamp", "Unknown time")
+        title = post.get("title", "")[:60]
+        subject = f"🚗 {category} | {post_time} | {title}"
+    else:
+        # Multiple posts - show count and latest time
+        latest_time = posts[0].get("timestamp", "Unknown time")
+        categories = list(set(p.get("category", "General") for p in posts))
+        cat_str = ", ".join(categories[:3])
+        subject = f"🚗 {len(posts)} jobs | {cat_str} | {latest_time}"
 
     html_body = f"""
 <html>
@@ -132,11 +153,18 @@ def send_email_notification(posts: list[Post], group_url: str) -> None:
 """
 
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    
+    # Send to multiple recipients
+    recipients = [
+        {"emailAddress": {"address": config["recipient"]}},
+        {"emailAddress": {"address": "levitinvlad99@gmail.com"}},
+    ]
+    
     payload = {
         "message": {
             "subject": subject,
             "body": {"contentType": "HTML", "content": html_body},
-            "toRecipients": [{"emailAddress": {"address": config["recipient"]}}],
+            "toRecipients": recipients,
         },
         "saveToSentItems": True,
     }

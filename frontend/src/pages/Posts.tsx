@@ -192,8 +192,20 @@ export function PostsPage() {
   // Get unique groups, categories, and locations for filter dropdowns
   const uniqueGroups = stats?.by_group.map(g => ({ name: g.group, url: '' })) || [];
   
-  // Get unique categories from posts
-  const uniqueCategories = Array.from(new Set(posts.map(p => p.category).filter(Boolean)));
+  // All predefined categories (matching AI processor categories)
+  const allCategories = [
+    'Electrical',
+    'Plumbing',
+    'Plumbing / Electrical',
+    'Transport / Moving',
+    'Painting / Renovation',
+    'Cleaning / Garden',
+    'Assembly / Furniture',
+    'Car Mechanic',
+    'Handyman / Misc',
+    'IT / Tech',
+    'General'
+  ];
   
   // Get unique locations from posts
   const uniqueLocations = Array.from(new Set(posts.map(p => p.location).filter(Boolean)));
@@ -299,7 +311,7 @@ export function PostsPage() {
             onChange={(e) => setCategoryFilter(e.target.value)}
           >
             <option value="">All Categories</option>
-            {uniqueCategories.map(cat => (
+            {allCategories.map(cat => (
               <option key={cat} value={cat}>{cat}</option>
             ))}
           </select>
