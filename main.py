@@ -234,6 +234,8 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
                 
                 if is_driving_job(title, text):
                     print(f"-> YES! Sending email...")
+                    # Set category before sending email
+                    post["category"] = "Transport / Moving"
                     send_email_notification([post], group_url)
                     mark_as_notified([post["post_id"]])
                     new_relevant_posts.append(post)
