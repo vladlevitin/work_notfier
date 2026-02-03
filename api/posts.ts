@@ -173,11 +173,6 @@ export default async function handler(
       query = query.eq('notified', false);
     }
 
-    if (category) {
-      // Use ilike for case-insensitive partial match
-      query = query.ilike('category', `%${category}%`);
-    }
-
     if (location) {
       query = query.ilike('location', `%${location}%`);
     }
@@ -188,8 +183,17 @@ export default async function handler(
 
     if (postsError) throw postsError;
 
+    // Filter by category client-side (to avoid Supabase query issues with special chars)
+    let filteredPosts = allPosts || [];
+    if (category) {
+      const categoryLower = category.toLowerCase();
+      filteredPosts = filteredPosts.filter(post => 
+        post.category && post.category.toLowerCase().includes(categoryLower)
+      );
+    }
+
     // Sort ALL posts by parsed timestamp (most recent first)
-    const sortedAllPosts = (allPosts || []).sort((a, b) => {
+    const sortedAllPosts = filteredPosts.sort((a, b) => {
       const dateA = parseFacebookTimestamp(a.timestamp || '');
       const dateB = parseFacebookTimestamp(b.timestamp || '');
       return dateB.getTime() - dateA.getTime(); // Descending order (newest first)
@@ -213,21 +217,14 @@ export default async function handler(
       countQuery = countQuery.eq('notified', false);
     }
 
-    if (category) {
-      countQuery = countQuery.ilike('category', `%${category}%`);
-    }
-
     if (location) {
       countQuery = countQuery.ilike('location', `%${location}%`);
     }
 
-    const { count, error: countError } = await countQuery;
-
-    if (countError) throw countError;
-
+    // Note: category filtering is done client-side, so total uses filteredPosts length
     return res.status(200).json({
       posts: sortedPosts,
-      total: sortedAllPosts.length, // Use actual sorted length, not DB count
+      total: sortedAllPosts.length,
       limit,
       offset,
     });
