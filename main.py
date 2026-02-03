@@ -8,6 +8,8 @@ import signal
 import sys
 from pathlib import Path
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -26,8 +28,11 @@ from config.settings import load_facebook_groups, KEYWORDS
 SCRAPE_INTERVAL_MINUTES = int(os.getenv("SCRAPE_INTERVAL_MINUTES", "0"))  # Default: 0 = loop immediately
 CLEAR_DATABASE_ON_START = True   # Set to False to keep existing posts
 MAX_POST_AGE_HOURS = 24  # Only notify for posts within this many hours
-USE_MULTITAB_MODE = True  # True = open all groups in tabs (faster), False = sequential
+PARALLEL_MODE = True  # True = all groups scraped simultaneously, False = sequential
 # =============================================================================
+
+# Thread-safe print lock for parallel mode
+print_lock = threading.Lock()
 
 
 def is_post_recent(post: dict, max_hours: int = 24, log_skip: bool = True) -> bool:
@@ -140,6 +145,212 @@ def print_scrape_metadata(facebook_groups: list) -> None:
     
     print(f"\n[CONFIG] {total_groups} groups | {total_scroll_steps} total scrolls | {len(KEYWORDS)} keywords")
     print(f"[KEYWORDS] {', '.join(KEYWORDS[:8])}{'...' if len(KEYWORDS) > 8 else ''}")
+
+
+def scrape_single_group(group_config: dict, group_idx: int, total_groups: int, openai_ok: bool) -> dict:
+    """
+    Scrape a single Facebook group with its own browser instance.
+    Runs in a separate thread for parallel scraping.
+    Returns stats about this group's scrape.
+    """
+    group_name = group_config['name']
+    group_url = group_config['url']
+    scroll_steps = group_config.get('scroll_steps', 5)
+    
+    result = {
+        "group_name": group_name,
+        "scraped": 0,
+        "new_saved": 0,
+        "skipped_existing": 0,
+        "skipped_unknown": 0,
+        "skipped_offers": 0,
+        "notified": 0,
+        "error": None
+    }
+    
+    driver = None
+    try:
+        # Create browser for this thread
+        driver = create_driver()
+        
+        with print_lock:
+            print(f"[{group_idx}/{total_groups}] {group_name[:40]} - Starting...")
+        
+        # Scrape the group
+        posts = scrape_facebook_group(driver, group_url, scroll_steps=scroll_steps)
+        result["scraped"] = len(posts)
+        
+        # Filter out posts with unknown IDs
+        unknown_count = sum(1 for p in posts if p.get('post_id') == 'unknown')
+        if unknown_count > 0:
+            posts = [p for p in posts if p.get('post_id') != 'unknown']
+            result["skipped_unknown"] = unknown_count
+        
+        # Filter out existing posts
+        existing_count = 0
+        if posts:
+            new_posts_only = []
+            for post in posts:
+                post_id = post.get('post_id')
+                if post_id and post_exists(post_id):
+                    existing_count += 1
+                else:
+                    new_posts_only.append(post)
+            result["skipped_existing"] = existing_count
+            posts = new_posts_only
+        
+        with print_lock:
+            print(f"[{group_idx}/{total_groups}] {group_name[:40]} - Found {result['scraped']} -> {len(posts)} new")
+        
+        # Check for moving/transport jobs and send immediate emails
+        notified_count = 0
+        if posts and openai_ok:
+            for post in posts:
+                if not is_post_recent(post, MAX_POST_AGE_HOURS, log_skip=False):
+                    continue
+                
+                title = post.get('title', '')
+                text = post.get('text', '')
+                
+                if is_driving_job(title, text):
+                    post["category"] = "Transport / Moving"
+                    with print_lock:
+                        print(f"[{group_idx}/{total_groups}] {group_name[:40]} - TRANSPORT JOB! Sending email...")
+                    send_email_notification([post], group_url)
+                    mark_as_notified([post["post_id"]])
+                    notified_count += 1
+        
+        result["notified"] = notified_count
+        
+        # AI filtering for service requests
+        offers_count = 0
+        if openai_ok and posts:
+            filtered_posts = []
+            for post in posts:
+                if is_service_request(post.get('title', ''), post.get('text', '')):
+                    filtered_posts.append(post)
+                else:
+                    offers_count += 1
+            result["skipped_offers"] = offers_count
+            posts = filtered_posts
+        
+        # Filter old posts
+        if posts:
+            posts = [p for p in posts if is_post_recent(p, MAX_POST_AGE_HOURS, log_skip=False)]
+        
+        # Categorize with AI
+        if openai_ok and posts:
+            for post in posts:
+                if not post.get("category"):
+                    try:
+                        ai_result = process_post_with_ai(
+                            post.get('title', ''),
+                            post.get('text', ''),
+                            post.get('post_id', '')
+                        )
+                        post["category"] = ai_result.get("category", "General")
+                        if ai_result.get("location"):
+                            post["location"] = ai_result.get("location")
+                    except Exception:
+                        post["category"] = "General"
+        
+        # Save to database
+        if posts:
+            new_count, _ = save_posts(posts)
+            result["new_saved"] = new_count
+        
+        with print_lock:
+            print(f"[{group_idx}/{total_groups}] {group_name[:40]} - DONE (saved {result['new_saved']})")
+        
+    except Exception as e:
+        result["error"] = str(e)[:100]
+        with print_lock:
+            print(f"[{group_idx}/{total_groups}] {group_name[:40]} - ERROR: {str(e)[:40]}")
+    finally:
+        if driver:
+            try:
+                driver.quit()
+            except:
+                pass
+    
+    return result
+
+
+def run_scrape_cycle_parallel(facebook_groups: list, openai_ok: bool, cycle_num: int) -> dict:
+    """
+    Run a scrape cycle with ALL groups scraped simultaneously.
+    Each group gets its own browser window running in a separate thread.
+    Returns stats about the cycle.
+    """
+    cycle_start = datetime.now()
+    num_groups = len(facebook_groups)
+    
+    print(f"\n{'='*80}")
+    print(f"CYCLE {cycle_num} | {cycle_start.strftime('%H:%M:%S')} | {num_groups} groups | PARALLEL MODE")
+    print(f"{'='*80}")
+    print(f"\n[*] Launching {num_groups} browser windows simultaneously...")
+    
+    total_stats = {
+        "scraped": 0,
+        "skipped_existing": 0,
+        "skipped_unknown": 0,
+        "skipped_offers": 0,
+        "new_saved": 0,
+        "notified": 0,
+        "errors": 0
+    }
+    
+    # Submit ALL groups to thread pool simultaneously
+    with ThreadPoolExecutor(max_workers=num_groups) as executor:
+        futures = {}
+        for idx, group_config in enumerate(facebook_groups, 1):
+            if shutdown_requested:
+                break
+            future = executor.submit(
+                scrape_single_group,
+                group_config,
+                idx,
+                num_groups,
+                openai_ok
+            )
+            futures[future] = group_config['name']
+        
+        # Collect results as they complete
+        completed = 0
+        for future in as_completed(futures):
+            if shutdown_requested:
+                break
+            completed += 1
+            try:
+                result = future.result()
+                total_stats["scraped"] += result.get("scraped", 0)
+                total_stats["skipped_existing"] += result.get("skipped_existing", 0)
+                total_stats["skipped_unknown"] += result.get("skipped_unknown", 0)
+                total_stats["skipped_offers"] += result.get("skipped_offers", 0)
+                total_stats["new_saved"] += result.get("new_saved", 0)
+                total_stats["notified"] += result.get("notified", 0)
+                if result.get("error"):
+                    total_stats["errors"] += 1
+            except Exception as e:
+                total_stats["errors"] += 1
+                with print_lock:
+                    print(f"[ERROR] {futures[future]}: {str(e)[:50]}")
+    
+    # Display cycle results
+    cycle_duration = (datetime.now() - cycle_start).total_seconds()
+    print(f"\n{'='*80}")
+    print(f"CYCLE {cycle_num} COMPLETE | {cycle_duration:.0f}s | {num_groups} groups in parallel")
+    print(f"{'='*80}")
+    print(f"  Scraped: {total_stats['scraped']:>4} posts from {num_groups} groups")
+    print(f"  Skipped: {total_stats['skipped_unknown']:>4} unknown | {total_stats['skipped_existing']:>4} in DB | {total_stats['skipped_offers']:>4} offers")
+    print(f"  Saved:   {total_stats['new_saved']:>4} new posts")
+    if total_stats['notified']:
+        print(f"  Emails:  {total_stats['notified']:>4} notifications sent")
+    if total_stats['errors']:
+        print(f"  Errors:  {total_stats['errors']:>4} groups failed")
+    
+    total_stats["duration"] = cycle_duration
+    return total_stats
 
 
 def run_scrape_cycle_multitab(driver, facebook_groups: list, openai_ok: bool, cycle_num: int) -> dict:
@@ -567,7 +778,7 @@ def main() -> int:
     print("FACEBOOK WORK NOTIFIER - CONTINUOUS MONITORING MODE")
     print(f"Started: {timestamp}")
     print(f"Scrape interval: {SCRAPE_INTERVAL_MINUTES} minutes")
-    print(f"Mode: {'Multi-tab (all groups in parallel)' if USE_MULTITAB_MODE else 'Sequential'}")
+    print(f"Mode: {'PARALLEL (all groups simultaneously)' if PARALLEL_MODE else 'Sequential'}")
     print("Press Ctrl+C to stop gracefully")
     print("="*80)
     
@@ -594,15 +805,15 @@ def main() -> int:
     # Print detailed metadata before scraping
     print_scrape_metadata(facebook_groups)
     
-    # Determine scraping mode: multi-tab (parallel pages) or sequential
-    use_multitab = USE_MULTITAB_MODE
+    # Determine scraping mode
+    use_parallel = PARALLEL_MODE
     
-    # Create browser driver (used for both modes now)
-    if use_multitab:
-        print(f"\n[*] Starting browser (multi-tab mode - {len(facebook_groups)} tabs)...")
+    driver = None
+    if use_parallel:
+        print(f"\n[*] Parallel mode: {len(facebook_groups)} browser windows will launch simultaneously")
     else:
         print("\n[*] Starting browser (sequential mode)...")
-    driver = create_driver()
+        driver = create_driver()
     
     cycle_num = 0
     total_stats = {
@@ -617,22 +828,23 @@ def main() -> int:
         while not shutdown_requested:
             cycle_num += 1
             
-            if use_multitab:
-                # Run multi-tab scrape cycle (all pages in one browser, different tabs)
-                stats = run_scrape_cycle_multitab(driver, facebook_groups, openai_ok, cycle_num)
+            if use_parallel:
+                # Run parallel scrape cycle (all groups simultaneously in separate windows)
+                stats = run_scrape_cycle_parallel(facebook_groups, openai_ok, cycle_num)
             else:
                 # Run sequential scrape cycle with single browser
                 stats = run_scrape_cycle(driver, facebook_groups, openai_ok, cycle_num)
-            
-            # Check if browser crashed and needs restart
-            if stats.get("browser_crashed"):
-                print("[*] Restarting browser...")
-                try:
-                    driver.quit()
-                except:
-                    pass
-                driver = create_driver()
-                print("[OK] Browser restarted, continuing...")
+                
+                # Check if browser crashed and needs restart (only in sequential mode)
+                if stats.get("browser_crashed"):
+                    print("[*] Restarting browser...")
+                    try:
+                        driver.quit()
+                    except:
+                        pass
+                    driver = create_driver()
+                    print("[OK] Browser restarted, continuing...")
+                    continue
                 continue
             
             # Update total stats
