@@ -47,9 +47,30 @@ def is_service_request(title: str, text: str) -> bool:
         response = client.chat.completions.create(
             model="gpt-5.2-chat-latest",
             messages=[
-                {"role": "system", "content": """You analyze Norwegian job postings to determine if they are:
-- SERVICE_REQUEST: Someone NEEDS help/service (e.g., "Trenger hjelp med...", "Ser etter noen som kan...", "Ønsker å få...")
-- SERVICE_OFFER: Someone is OFFERING their services (e.g., "Tilbyr...", "Leier ut...", "Vi utfører...", "Jeg kan hjelpe med...")
+                {"role": "system", "content": """You analyze Norwegian/English job postings to classify them as REQUEST or OFFER.
+
+OFFER (return "OFFER") - Someone is ADVERTISING their services:
+- "Tilbyr..." / "Vi tilbyr..." / "Jeg tilbyr..."
+- "Utfører..." / "Vi utfører..."
+- "Jeg kan hjelpe med..."
+- "Ledig kapasitet..." / "Vi har ledig tid..."
+- "Ta kontakt for tilbud..."
+- "Rimelige priser..." / "Gode priser..."
+- "Erfaren [profession] tilbyr..."
+- "Flyttebyrå trenger..." (company looking for workers = OFFER)
+- Any advertisement for a company/service
+- Looking to HIRE workers for their business
+
+REQUEST (return "REQUEST") - Someone NEEDS help/service:
+- "Trenger hjelp med..." / "Trenger noen som kan..."
+- "Ser etter noen som kan..."
+- "Ønsker å få..." / "Ønsker hjelp til..."
+- "Noen som kan...?" (asking if someone can help)
+- "Hva koster det å...?" (asking for price)
+- Individual person needing a specific job done
+
+IMPORTANT: If someone mentions they are a company, business, or professional offering services, it's an OFFER.
+If an individual is asking for help with a specific task, it's a REQUEST.
 
 Respond with ONLY one word: REQUEST or OFFER"""},
                 {"role": "user", "content": content}
