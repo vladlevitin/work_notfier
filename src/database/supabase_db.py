@@ -86,14 +86,9 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
         except Exception:
             pass
         
-        # Get AI-extracted category
-        category = "General"
-        try:
-            from src.ai.ai_processor import process_post_with_ai
-            ai_result = process_post_with_ai(post["title"], post["text"], post["post_id"])
-            category = ai_result.get("category", "General")
-        except Exception:
-            pass
+        # Use category and location from post if already set (by main.py)
+        category = post.get("category", "General")
+        location = post.get("location")
         
         # Build insert data with basic columns
         insert_data = {
@@ -111,6 +106,10 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
         # Add posted_at if we successfully parsed the timestamp
         if posted_at:
             insert_data["posted_at"] = posted_at
+        
+        # Add location if available
+        if location:
+            insert_data["location"] = location
         
         supabase.table("posts").insert(insert_data).execute()
         return True
