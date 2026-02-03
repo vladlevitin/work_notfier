@@ -121,7 +121,7 @@ def check_openai_api_key() -> bool:
         
         # Make a minimal API call to verify the key
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5.2-chat-latest",
             messages=[{"role": "user", "content": "Say 'OK' if you can read this."}],
             max_tokens=5
         )
