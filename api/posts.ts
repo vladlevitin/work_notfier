@@ -174,9 +174,8 @@ export default async function handler(
     }
 
     if (category) {
-      // Use ilike for case-insensitive match, escape special characters
-      const escapedCategory = category.replace(/%/g, '\\%').replace(/_/g, '\\_');
-      query = query.ilike('category', escapedCategory);
+      // Use ilike for case-insensitive partial match
+      query = query.ilike('category', `%${category}%`);
     }
 
     if (location) {
@@ -215,8 +214,7 @@ export default async function handler(
     }
 
     if (category) {
-      const escapedCategory = category.replace(/%/g, '\\%').replace(/_/g, '\\_');
-      countQuery = countQuery.ilike('category', escapedCategory);
+      countQuery = countQuery.ilike('category', `%${category}%`);
     }
 
     if (location) {
