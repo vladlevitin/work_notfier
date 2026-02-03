@@ -47,22 +47,16 @@ def create_driver(instance_id: int = 0):
     main_profile.mkdir(parents=True, exist_ok=True)
     
     if instance_id > 0:
-        # Parallel mode: copy main profile to instance folder to preserve login
+        # Parallel mode: use pre-copied profile (prepared by prepare_browser_profiles)
         instance_dir = Path(__file__).resolve().parent / "edge_profiles" / f"instance_{instance_id}"
         
-        # Clean up old instance folder if exists, then copy fresh
-        if instance_dir.exists():
+        # Create if not exists (fallback if pre-copy didn't run)
+        if not instance_dir.exists():
+            instance_dir.mkdir(parents=True, exist_ok=True)
             try:
-                shutil.rmtree(instance_dir)
+                shutil.copytree(main_profile, instance_dir, dirs_exist_ok=True)
             except:
                 pass
-        
-        # Copy the main profile (with login cookies) to instance folder
-        try:
-            shutil.copytree(main_profile, instance_dir, dirs_exist_ok=True)
-        except Exception as e:
-            # If copy fails, just create empty folder
-            instance_dir.mkdir(parents=True, exist_ok=True)
         
         user_data_dir = instance_dir
     else:

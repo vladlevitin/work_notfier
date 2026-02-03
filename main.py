@@ -123,7 +123,7 @@ def check_openai_api_key() -> bool:
         response = client.chat.completions.create(
             model="gpt-5.2-chat-latest",
             messages=[{"role": "user", "content": "Say 'OK' if you can read this."}],
-            max_tokens=5
+            max_completion_tokens=5
         )
         
         if response.choices and response.choices[0].message.content:
@@ -276,6 +276,35 @@ def scrape_single_group(group_config: dict, group_idx: int, total_groups: int, o
     return result
 
 
+def prepare_browser_profiles(num_instances: int) -> None:
+    """Pre-create browser profile copies for parallel mode."""
+    import shutil
+    from pathlib import Path
+    
+    main_profile = Path(__file__).resolve().parent / "edge_profile"
+    profiles_dir = Path(__file__).resolve().parent / "edge_profiles"
+    
+    # Create profiles directory
+    profiles_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Copy profile to each instance folder in parallel
+    def copy_profile(idx):
+        instance_dir = profiles_dir / f"instance_{idx}"
+        if instance_dir.exists():
+            try:
+                shutil.rmtree(instance_dir)
+            except:
+                pass
+        try:
+            shutil.copytree(main_profile, instance_dir, dirs_exist_ok=True)
+        except:
+            instance_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Copy all profiles in parallel
+    with ThreadPoolExecutor(max_workers=num_instances) as executor:
+        list(executor.map(copy_profile, range(1, num_instances + 1)))
+
+
 def run_scrape_cycle_parallel(facebook_groups: list, openai_ok: bool, cycle_num: int) -> dict:
     """
     Run a scrape cycle with ALL groups scraped simultaneously.
@@ -288,7 +317,12 @@ def run_scrape_cycle_parallel(facebook_groups: list, openai_ok: bool, cycle_num:
     print(f"\n{'='*80}")
     print(f"CYCLE {cycle_num} | {cycle_start.strftime('%H:%M:%S')} | {num_groups} groups | PARALLEL MODE")
     print(f"{'='*80}")
-    print(f"\n[*] Launching {num_groups} browser windows simultaneously...")
+    
+    # Pre-create all browser profiles in parallel (faster than copying during launch)
+    print(f"\n[*] Preparing {num_groups} browser profiles...")
+    prepare_browser_profiles(num_groups)
+    
+    print(f"[*] Launching {num_groups} browser windows simultaneously...")
     
     total_stats = {
         "scraped": 0,
