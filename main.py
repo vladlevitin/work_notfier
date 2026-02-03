@@ -25,7 +25,7 @@ from config.settings import load_facebook_groups, KEYWORDS
 # =============================================================================
 SCRAPE_INTERVAL_MINUTES = int(os.getenv("SCRAPE_INTERVAL_MINUTES", "0"))  # Default: 0 = loop immediately
 CLEAR_DATABASE_ON_START = True   # Set to False to keep existing posts
-MAX_POST_AGE_HOURS = 7  # Only notify for posts within this many hours
+MAX_POST_AGE_HOURS = 24  # Only notify for posts within this many hours
 # =============================================================================
 
 

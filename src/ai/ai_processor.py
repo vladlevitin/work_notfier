@@ -192,10 +192,19 @@ def is_driving_job(title: str, text: str) -> bool:
     # Quick keyword check first - if obvious transport keywords, return True immediately
     combined = (title + " " + text).lower()
     transport_keywords = [
-        "flytte", "flytting", "flyttehjelp", "frakte", "transport", 
-        "hente og levere", "bortkjøring", "varebil", "henger",
-        "bære opp", "bærehjelp", "løftehjelp", "flyttelass",
-        "fra oslo til", "fra sted til", "hente noe", "levere noe"
+        # Moving/relocation
+        "flytte", "flytting", "flyttehjelp", "flyttelass", "flyttebyrå",
+        # Transport/delivery
+        "frakte", "transport", "transportere", "bortkjøring", "bortkjøre",
+        "hente og levere", "hente noe", "levere noe", "levering",
+        # Vehicles
+        "varebil", "henger", "lastebil", "pickup",
+        # Carrying/lifting
+        "bære opp", "bærehjelp", "løftehjelp", "bære ned",
+        # Location-based transport
+        "fra oslo til", "fra sted til", "til oslo", "fra asker",
+        # Additional transport terms
+        "kjøre", "kjøring", "sjåfør", "henting", "frakt"
     ]
     
     for keyword in transport_keywords:
