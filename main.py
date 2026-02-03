@@ -28,7 +28,8 @@ from config.settings import load_facebook_groups, KEYWORDS
 SCRAPE_INTERVAL_MINUTES = int(os.getenv("SCRAPE_INTERVAL_MINUTES", "0"))  # Default: 0 = loop immediately
 CLEAR_DATABASE_ON_START = True   # Set to False to keep existing posts
 MAX_POST_AGE_HOURS = 24  # Only notify for posts within this many hours
-PARALLEL_MODE = True  # True = all groups scraped simultaneously, False = sequential
+PARALLEL_MODE = True  # True = parallel scraping, False = sequential
+MAX_PARALLEL_BROWSERS = 3  # Limit concurrent browsers to avoid resource issues (3-4 recommended)
 # =============================================================================
 
 # Thread-safe print lock for parallel mode
@@ -314,15 +315,17 @@ def run_scrape_cycle_parallel(facebook_groups: list, openai_ok: bool, cycle_num:
     cycle_start = datetime.now()
     num_groups = len(facebook_groups)
     
+    actual_workers = min(MAX_PARALLEL_BROWSERS, num_groups)
+    
     print(f"\n{'='*80}")
-    print(f"CYCLE {cycle_num} | {cycle_start.strftime('%H:%M:%S')} | {num_groups} groups | PARALLEL MODE")
+    print(f"CYCLE {cycle_num} | {cycle_start.strftime('%H:%M:%S')} | {num_groups} groups | {actual_workers} parallel browsers")
     print(f"{'='*80}")
     
-    # Pre-create all browser profiles in parallel (faster than copying during launch)
-    print(f"\n[*] Preparing {num_groups} browser profiles...")
-    prepare_browser_profiles(num_groups)
+    # Pre-create browser profiles for concurrent instances
+    print(f"\n[*] Preparing {actual_workers} browser profiles...")
+    prepare_browser_profiles(actual_workers)
     
-    print(f"[*] Launching {num_groups} browser windows simultaneously...")
+    print(f"[*] Scraping {num_groups} groups with {actual_workers} concurrent browsers...")
     
     total_stats = {
         "scraped": 0,
@@ -334,8 +337,8 @@ def run_scrape_cycle_parallel(facebook_groups: list, openai_ok: bool, cycle_num:
         "errors": 0
     }
     
-    # Submit ALL groups to thread pool simultaneously
-    with ThreadPoolExecutor(max_workers=num_groups) as executor:
+    # Submit groups to thread pool with limited concurrent browsers
+    with ThreadPoolExecutor(max_workers=actual_workers) as executor:
         futures = {}
         for idx, group_config in enumerate(facebook_groups, 1):
             if shutdown_requested:
@@ -467,7 +470,7 @@ def run_scrape_cycle_multitab(driver, facebook_groups: list, openai_ok: bool, cy
             
             # Wait for feed to be present
             try:
-                wait = WebDriverWait(driver, 15)
+                wait = WebDriverWait(driver, 60)
                 wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "[role='feed']")))
             except:
                 print(f"    [TIMEOUT] Page not loaded, skipping...")

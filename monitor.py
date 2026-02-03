@@ -100,7 +100,7 @@ def create_driver(instance_id: int = 0):
     
     try:
         driver = webdriver.Edge(service=service, options=options)
-        driver.set_page_load_timeout(30)
+        driver.set_page_load_timeout(60)  # Increased timeout for parallel mode
         return driver
     except Exception as e:
         print(f"[ERROR] Failed to start browser: {e}")

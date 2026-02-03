@@ -423,14 +423,14 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
     driver.get(group_url)
 
     try:
-        wait = WebDriverWait(driver, 30)  # 30 second timeout
+        wait = WebDriverWait(driver, 60)  # 60 second timeout for parallel mode
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "[role='feed']")))
         wait.until(
             lambda d: d.find_elements(By.CSS_SELECTOR, "[role='feed'] [data-ad-rendering-role='story_message']")
             or d.find_elements(By.CSS_SELECTOR, "[role='feed'] [data-ad-preview='message']")
         )
     except TimeoutException:
-        print(f"[TIMEOUT] Page failed to load within 30s, skipping...")
+        print(f"[TIMEOUT] Page failed to load within 60s, skipping...")
         return []
 
     # Extract group name from page title
