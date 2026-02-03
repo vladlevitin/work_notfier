@@ -236,12 +236,12 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
                     print(f"-> YES! TRANSPORT JOB DETECTED!")
                     # Set category before sending email
                     post["category"] = "Transport / Moving"
-                    print(f"    📧 Sending email to: vladislavlevitin1999@gmail.com")
-                    print(f"    📝 Subject: Transport / Moving | {post.get('timestamp', 'Unknown')} | {title[:40]}...")
+                    print(f"    [EMAIL] To: vladislavlevitin1999@gmail.com")
+                    print(f"    [EMAIL] Subject: Transport / Moving | {post.get('timestamp', 'Unknown')} | {title[:40]}...")
                     send_email_notification([post], group_url)
                     mark_as_notified([post["post_id"]])
                     new_relevant_posts.append(post)
-                    print(f"    ✅ Email sent successfully!")
+                    print(f"    [EMAIL] Sent successfully!")
                 else:
                     print(f"-> No (not moving/transport)")
         # ==========================================================================
