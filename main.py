@@ -17,7 +17,7 @@ from src.scraper import scrape_facebook_group, filter_posts_by_keywords, print_p
 from monitor import create_driver
 from src.database import save_posts, mark_as_notified, post_exists
 from src.notifications import send_email_notification
-from src.ai.ai_processor import is_service_request, is_driving_job
+from src.ai.ai_processor import is_service_request, is_driving_job, process_post_with_ai
 from config.settings import load_facebook_groups, KEYWORDS
 
 # =============================================================================
@@ -272,6 +272,24 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
             if old_count > 0:
                 print(f"    Filtered {old_count} posts older than {MAX_POST_AGE_HOURS}h")
             posts = recent_posts_to_save
+        
+        # Categorize all posts with AI before saving (if not already categorized)
+        if openai_ok and posts:
+            print(f"    Categorizing {len(posts)} posts...", end=" ", flush=True)
+            for post in posts:
+                if not post.get("category"):  # Only if not already set (e.g., by is_driving_job)
+                    try:
+                        ai_result = process_post_with_ai(
+                            post.get('title', ''),
+                            post.get('text', ''),
+                            post.get('post_id', '')
+                        )
+                        post["category"] = ai_result.get("category", "General")
+                        if ai_result.get("location"):
+                            post["location"] = ai_result.get("location")
+                    except Exception:
+                        post["category"] = "General"
+            print("done")
         
         # Save filtered posts to database IMMEDIATELY
         saved_count = 0
