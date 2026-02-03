@@ -26,6 +26,13 @@ INSTANT_EMAIL_NOTIFICATIONS = True  # Send email for matching new posts immediat
 
 def create_driver():
     """Create and return Edge WebDriver instance with robust Windows configuration."""
+    import logging
+    import os
+    
+    # Suppress Selenium and WebDriver logging
+    logging.getLogger('selenium').setLevel(logging.WARNING)
+    logging.getLogger('urllib3').setLevel(logging.WARNING)
+    
     driver_path = Path(__file__).resolve().parent / "edgedriver" / "msedgedriver.exe"
     user_data_dir = Path(__file__).resolve().parent / "edge_profile"
     
@@ -47,13 +54,22 @@ def create_driver():
     options.add_argument("--start-maximized")
     options.add_argument("--remote-debugging-port=9222")
     
-    # Prevent detection
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    # Suppress browser logging/errors
+    options.add_argument("--log-level=3")  # Only fatal errors
+    options.add_argument("--silent")
+    options.add_argument("--disable-logging")
+    options.add_experimental_option('excludeSwitches', ['enable-logging', 'enable-automation'])
     options.add_experimental_option("useAutomationExtension", False)
     
-    service = Service(executable_path=str(driver_path))
+    # Suppress WebDriver service output
+    service = Service(
+        executable_path=str(driver_path),
+        log_output=os.devnull  # Suppress msedgedriver logs
+    )
     
     try:
+        # Suppress stderr to hide DevTools and GPU error messages
+        import subprocess
         driver = webdriver.Edge(service=service, options=options)
         driver.set_page_load_timeout(30)
         return driver
