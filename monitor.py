@@ -30,28 +30,44 @@ def create_driver(instance_id: int = 0):
     
     Args:
         instance_id: Unique ID for this browser instance (used for parallel mode).
-                     Each instance gets its own profile folder and debug port.
+                     Each instance gets a copy of the main profile to preserve login.
     """
     import logging
     import os
-    import uuid
+    import shutil
     
     # Suppress Selenium and WebDriver logging
     logging.getLogger('selenium').setLevel(logging.WARNING)
     logging.getLogger('urllib3').setLevel(logging.WARNING)
     
     driver_path = Path(__file__).resolve().parent / "edgedriver" / "msedgedriver.exe"
+    main_profile = Path(__file__).resolve().parent / "edge_profile"
     
-    # Create unique user data directory for each instance
+    # Create main profile directory if it doesn't exist
+    main_profile.mkdir(parents=True, exist_ok=True)
+    
     if instance_id > 0:
-        # Parallel mode: create unique temp profile for each instance
-        user_data_dir = Path(__file__).resolve().parent / "edge_profiles" / f"instance_{instance_id}_{uuid.uuid4().hex[:8]}"
+        # Parallel mode: copy main profile to instance folder to preserve login
+        instance_dir = Path(__file__).resolve().parent / "edge_profiles" / f"instance_{instance_id}"
+        
+        # Clean up old instance folder if exists, then copy fresh
+        if instance_dir.exists():
+            try:
+                shutil.rmtree(instance_dir)
+            except:
+                pass
+        
+        # Copy the main profile (with login cookies) to instance folder
+        try:
+            shutil.copytree(main_profile, instance_dir, dirs_exist_ok=True)
+        except Exception as e:
+            # If copy fails, just create empty folder
+            instance_dir.mkdir(parents=True, exist_ok=True)
+        
+        user_data_dir = instance_dir
     else:
-        # Sequential mode: use the standard profile
-        user_data_dir = Path(__file__).resolve().parent / "edge_profile"
-    
-    # Create user data directory if it doesn't exist
-    user_data_dir.mkdir(parents=True, exist_ok=True)
+        # Sequential mode: use the standard profile directly
+        user_data_dir = main_profile
     
     options = Options()
     options.use_chromium = True
