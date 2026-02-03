@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import random
 import re
 import time
 from datetime import datetime, timedelta
@@ -120,10 +119,8 @@ def click_see_more(driver: WebDriver, parent_element) -> bool:
                 btn_text = btn.text.strip().lower()
                 if btn_text in see_more_patterns:
                     # Use JavaScript click - more reliable for React/Facebook
-                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
-                    time.sleep(0.2)
                     driver.execute_script("arguments[0].click();", btn)
-                    time.sleep(0.5)  # Wait for text to expand
+                    time.sleep(0.15)  # Brief wait for text to expand
                     return True
             except Exception:
                 continue
@@ -138,10 +135,8 @@ def click_see_more(driver: WebDriver, parent_element) -> bool:
                     try:
                         # Check if element is visible and clickable
                         if elem.is_displayed():
-                            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", elem)
-                            time.sleep(0.2)
                             driver.execute_script("arguments[0].click();", elem)
-                            time.sleep(0.5)
+                            time.sleep(0.15)
                             return True
                     except Exception:
                         continue
@@ -157,10 +152,8 @@ def click_see_more(driver: WebDriver, parent_element) -> bool:
                 for btn in btns:
                     try:
                         if btn.text.strip().lower() in see_more_patterns:
-                            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
-                            time.sleep(0.2)
                             driver.execute_script("arguments[0].click();", btn)
-                            time.sleep(0.5)
+                            time.sleep(0.15)
                             return True
                     except Exception:
                         continue
@@ -180,7 +173,7 @@ def sort_by_new_posts(driver: WebDriver) -> bool:
     """
     try:
         # Wait a moment for the sort button to be available
-        time.sleep(1)
+        time.sleep(0.3)
         
         # Facebook has a sort dropdown that shows "Most relevant" by default
         # We need to click it and select "New posts"
@@ -252,15 +245,12 @@ def sort_by_new_posts(driver: WebDriver) -> bool:
         
         # Click the sort button to open dropdown
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", sort_button)
-        time.sleep(0.3)
+        time.sleep(0.1)
         driver.execute_script("arguments[0].click();", sort_button)
-        time.sleep(0.5)
+        time.sleep(0.3)
         
         # Now find and click "New posts" option
         new_posts_texts = ["new posts", "nye innlegg", "nyeste innlegg", "newest", "new"]
-        
-        # Wait for dropdown menu to appear
-        time.sleep(0.5)
         
         # Look for menu items
         menu_items = driver.find_elements(By.CSS_SELECTOR, "[role='menuitem'], [role='menuitemradio'], [role='option']")
@@ -298,7 +288,7 @@ def sort_by_new_posts(driver: WebDriver) -> bool:
         print("    [SORT] Sorted by 'New posts'")
         
         # Wait for page to refresh with new sorting
-        time.sleep(2)
+        time.sleep(0.8)
         
         return True
         
@@ -325,16 +315,13 @@ def expand_all_see_more(driver: WebDriver) -> int:
                 btn_text = btn.text.strip().lower()
                 if btn_text in see_more_patterns:
                     # Use JavaScript click
-                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
-                    time.sleep(0.1)
                     driver.execute_script("arguments[0].click();", btn)
                     clicked += 1
-                    time.sleep(0.2)  # Brief pause between clicks
             except Exception:
                 continue
         
         if clicked > 0:
-            time.sleep(1.0)  # Wait for all expansions to complete (longer wait for DOM updates)
+            time.sleep(0.3)  # Brief wait for expansions to complete
             
     except Exception as e:
         pass
@@ -349,16 +336,12 @@ def get_timestamp_from_hover(driver: WebDriver, timestamp_element) -> str | None
     Returns the tooltip text or None if not found.
     """
     try:
-        # Scroll element into view first
-        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", timestamp_element)
-        time.sleep(0.2)
-        
         # Hover over the element
         actions = ActionChains(driver)
         actions.move_to_element(timestamp_element).perform()
         
         # Wait for tooltip to appear (Facebook uses a div with role="tooltip" or similar)
-        time.sleep(0.5)
+        time.sleep(0.25)
         
         # Try to find the tooltip - Facebook uses various tooltip implementations
         tooltip_selectors = [
@@ -456,14 +439,14 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
     # Sort by "New posts" instead of "Most relevant" before scraping
     sort_by_new_posts(driver)
 
-    # Random initial pause (1-3 seconds) - simulate human arriving at page
-    time.sleep(random.uniform(1.0, 3.0))
+    # Brief pause before starting
+    time.sleep(0.5)
 
     posts_dict: dict[str, Post] = {}
 
     for scroll_num in range(scroll_steps):
-        # Random pause before reading posts (0.5-2 seconds)
-        time.sleep(random.uniform(0.5, 2.0))
+        # Brief pause before reading posts
+        time.sleep(0.3)
         
         # Expand all "See more" buttons on visible page before extracting text
         expand_all_see_more(driver)
@@ -647,20 +630,14 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
                     print(f"    [WARN] Skipped post: {str(e)[:50]}...")
                 continue
 
-        # Scroll down with random behavior
-        # Sometimes scroll to bottom, sometimes scroll by random amount (simulate human scrolling)
-        if random.random() < 0.7:  # 70% of the time, scroll to bottom
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        else:  # 30% of the time, scroll by random amount
-            scroll_amount = random.randint(500, 1500)
-            driver.execute_script(f"window.scrollBy(0, {scroll_amount});")
+        # Scroll down to load more posts
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         
-        # Random pause after scrolling (2-5 seconds) - simulate human reading
-        pause_time = random.uniform(2.0, 5.0)
-        time.sleep(pause_time)
+        # Brief pause after scrolling for content to load
+        time.sleep(0.8)
 
-    # Final pause before collecting remaining posts (1-2 seconds)
-    time.sleep(random.uniform(1.0, 2.0))
+    # Final brief pause before collecting remaining posts
+    time.sleep(0.3)
 
     # Final collection after scrolling
     # Expand all "See more" buttons before final collection
