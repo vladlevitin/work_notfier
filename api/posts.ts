@@ -174,8 +174,8 @@ export default async function handler(
     }
 
     if (category) {
-      // Use ilike for partial match (e.g., "Transport" matches "Transport / Moving")
-      query = query.ilike('category', `%${category}%`);
+      // Use eq for exact match on category
+      query = query.eq('category', category);
     }
 
     if (location) {
@@ -214,7 +214,7 @@ export default async function handler(
     }
 
     if (category) {
-      countQuery = countQuery.ilike('category', `%${category}%`);
+      countQuery = countQuery.eq('category', category);
     }
 
     if (location) {

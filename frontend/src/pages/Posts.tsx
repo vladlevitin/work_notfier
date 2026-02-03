@@ -192,12 +192,11 @@ export function PostsPage() {
   // Get unique groups, categories, and locations for filter dropdowns
   const uniqueGroups = stats?.by_group.map(g => ({ name: g.group, url: '' })) || [];
   
-  // All predefined categories (matching AI processor categories)
+  // All predefined categories (matching AI processor categories exactly)
   const allCategories = [
+    'Transport / Moving',
     'Electrical',
     'Plumbing',
-    'Plumbing / Electrical',
-    'Transport / Moving',
     'Painting / Renovation',
     'Cleaning / Garden',
     'Assembly / Furniture',
