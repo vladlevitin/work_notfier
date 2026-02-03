@@ -156,7 +156,7 @@ def send_email_notification(posts: list[Post], group_url: str) -> None:
     
     # Send to single recipient
     recipients = [
-        {"emailAddress": {"address": "levitinvlad99@gmail.com"}},
+        {"emailAddress": {"address": "vladislavlevitin1999@gmail.com"}},
     ]
     
     payload = {
