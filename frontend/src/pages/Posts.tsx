@@ -60,36 +60,27 @@ export function PostsPage() {
     
     try {
       const currentOffset = reset ? 0 : offset;
-      // Don't send category to API - we filter client-side for consistency with display
+      // Send category filter to API - server handles filtering with same fallback logic
       const response = await api.getPosts(
         PAGE_SIZE,
         currentOffset,
         groupFilter || undefined,
         searchFilter || undefined,
         showOnlyNew,
-        undefined,  // category filter applied client-side
+        categoryFilter || undefined,
         locationFilter || undefined
       );
       
-      // Apply category filter client-side using same logic as getCategoryDisplay
-      let filteredPosts = response.posts;
-      if (categoryFilter) {
-        filteredPosts = response.posts.filter(post => {
-          const postCategory = getPostCategory(post);
-          return postCategory.toLowerCase().includes(categoryFilter.toLowerCase());
-        });
-      }
-      
       if (reset) {
-        setPosts(filteredPosts);
+        setPosts(response.posts);
         setOffset(response.posts.length);
       } else {
-        setPosts(prev => [...prev, ...filteredPosts]);
+        setPosts(prev => [...prev, ...response.posts]);
         setOffset(prev => prev + response.posts.length);
       }
       
-      setTotal(categoryFilter ? filteredPosts.length : response.total);
-      setHasMore(!categoryFilter && response.posts.length >= PAGE_SIZE && (reset ? response.posts.length : offset + response.posts.length) < response.total);
+      setTotal(response.total);
+      setHasMore(response.posts.length >= PAGE_SIZE && (reset ? response.posts.length : offset + response.posts.length) < response.total);
     } catch (err: any) {
       setError(err.message || 'Failed to load posts');
     } finally {
@@ -280,22 +271,33 @@ export function PostsPage() {
     <div className="container">
       <div className="header">
         <h1>🚗 Facebook Work Notifier Dashboard</h1>
-        <div className="stats-bar">
-          <div className="stat-item">
-            <span className="stat-label">Total Posts:</span>
+        
+        {/* Aggregate Stats Section */}
+        <div className="stats-bar stats-aggregate">
+          <div className="stat-item stat-large">
+            <span className="stat-label">Total Posts</span>
             <span className="stat-value">{stats?.total || 0}</span>
           </div>
-          <div className="stat-item">
-            <span className="stat-label">New Posts:</span>
+          <div className="stat-item stat-large">
+            <span className="stat-label">New Posts</span>
             <span className="stat-value highlight">{stats?.new || 0}</span>
           </div>
-          {stats?.by_group.map(group => (
-            <div key={group.group} className="stat-item">
-              <span className="stat-label">{group.group}:</span>
-              <span className="stat-value">{group.count}</span>
-            </div>
-          ))}
         </div>
+        
+        {/* Per-Group Stats Section */}
+        {stats?.by_group && stats.by_group.length > 0 && (
+          <div className="stats-bar stats-groups">
+            <div className="stats-groups-header">Posts by Group</div>
+            <div className="stats-groups-grid">
+              {stats.by_group.map(group => (
+                <div key={group.group} className="stat-item-group">
+                  <span className="stat-group-name">{group.group}</span>
+                  <span className="stat-group-count">{group.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="filters">

@@ -49,10 +49,21 @@ body {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
+/* Aggregate Stats Section */
+.stats-aggregate {
+  justify-content: flex-start;
+  gap: 3rem;
+  margin-bottom: 1rem;
+}
+
 .stat-item {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+}
+
+.stat-item.stat-large {
+  min-width: 120px;
 }
 
 .stat-label {
@@ -69,6 +80,53 @@ body {
 
 .stat-value.highlight {
   color: var(--success-color);
+}
+
+/* Per-Group Stats Section */
+.stats-groups {
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+}
+
+.stats-groups-header {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.stats-groups-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+}
+
+.stat-item-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stat-group-name {
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stat-group-count {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--primary-color);
+  background: #e8f0fe;
+  padding: 0.15rem 0.5rem;
+  border-radius: 10px;
+  min-width: 24px;
+  text-align: center;
 }
 
 .filters {
