@@ -48,6 +48,20 @@
       "enabled": true,
       "scroll_steps": 5,
       "description": "Group will be auto-named when first scraped"
+    },
+    {
+      "name": "Facebook Group 325267487930719",
+      "url": "https://www.facebook.com/groups/325267487930719",
+      "enabled": true,
+      "scroll_steps": 5,
+      "description": "Group will be auto-named when first scraped"
+    },
+    {
+      "name": "Facebook Group 710590892327557",
+      "url": "https://www.facebook.com/groups/710590892327557",
+      "enabled": true,
+      "scroll_steps": 5,
+      "description": "Group will be auto-named when first scraped"
     }
   ]
 }

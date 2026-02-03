@@ -164,35 +164,49 @@ Classify posts accurately into the MOST SPECIFIC category. Always respond with v
 
 def is_driving_job(title: str, text: str) -> bool:
     """
-    Use AI to determine if a post is PRIMARILY a driving/transport job.
+    Use AI to determine if a post involves transport, moving, or delivery work.
     
-    Returns True only if the MAIN work is driving, transport, or moving items.
-    Returns False if driving/transport is just a minor part of another job
-    (e.g., kitchen installation that needs transport).
+    Returns True if the post is about transporting/moving items or people.
     """
+    # Quick keyword check first - if obvious transport keywords, return True immediately
+    combined = (title + " " + text).lower()
+    transport_keywords = [
+        "flytte", "flytting", "flyttehjelp", "frakte", "transport", 
+        "hente og levere", "bortkjøring", "varebil", "henger",
+        "bære opp", "bærehjelp", "løftehjelp", "flyttelass",
+        "fra oslo til", "fra sted til", "hente noe", "levere noe"
+    ]
+    
+    for keyword in transport_keywords:
+        if keyword in combined:
+            return True
+    
     content = f"Title: {title}\n\nPost content:\n{text[:1500]}"
     
     try:
         response = client.chat.completions.create(
             model="gpt-5.2-chat-latest",
             messages=[
-                {"role": "system", "content": """You determine if a job post is PRIMARILY a driving/transport job.
+                {"role": "system", "content": """You determine if a job post involves TRANSPORT, MOVING, or DELIVERY work.
 
-Answer "YES" only if the MAIN work requested is:
-- Driving a vehicle (being a driver/chauffeur)
-- Transporting items from A to B (the main job is the transport itself)
-- Moving/relocation services (flytting, moving help)
-- Delivery/pickup services where driving is the main task
-- Looking for someone with a vehicle to transport things
+Answer "YES" if the post involves ANY of these:
+- Moving items/furniture from one place to another (flytting, flytte, bære)
+- Transporting things (frakte, transport, hente, levere, bortkjøring)
+- Pickup or delivery services (hente noe, levere noe)
+- Someone needs a vehicle/driver (varebil, henger, bil, sjåfør)
+- Relocation help (flyttehjelp, bærehjelp)
+- Carrying/lifting items (bære opp, løfte)
 
-Answer "NO" if:
-- Transport is just a SMALL PART of a larger job (e.g., kitchen renovation that includes transport)
-- The main job is something else (plumbing, painting, assembly) even if transport is mentioned
-- Someone needs help with manual work that happens to mention transport
-- The post is about car repairs (mechanic work, not driving)
+Answer "NO" only if:
+- The post is about car REPAIRS/mechanics (bilmekaniker, verksted, reparere bil)
+- The post is purely about cleaning, painting, plumbing, electrical with NO transport element
+- The post is offering transport services (not requesting them)
 
-Be strict - only say YES if driving/transport IS the main job being requested."""},
-                {"role": "user", "content": f"Is this PRIMARILY a driving/transport job? Answer only YES or NO.\n\n{content}"}
+Norwegian keywords that indicate YES:
+flytte, flytting, frakte, transport, hente, levere, bære, bortkjøring, varebil, henger, kjøre, bil
+
+Be INCLUSIVE - if transport/moving is mentioned, answer YES."""},
+                {"role": "user", "content": f"Does this post involve transport, moving, or delivery work? Answer only YES or NO.\n\n{content}"}
             ],
             temperature=0.1,
             max_tokens=10
