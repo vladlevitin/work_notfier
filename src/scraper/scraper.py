@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 from typing import TypedDict
 
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -106,10 +105,6 @@ def click_see_more(driver: WebDriver, parent_element) -> bool:
     Returns True if clicked successfully, False otherwise.
     """
     try:
-        # Facebook's "See more" button structure from user's HTML:
-        # <div role="button" tabindex="0">See more</div>
-        # Look for div with role="button" containing "See more" or "Se mer" text
-        
         see_more_patterns = ["see more", "se mer", "vis mer"]
         
         # Method 1: Find by role="button" with exact text
@@ -118,9 +113,7 @@ def click_see_more(driver: WebDriver, parent_element) -> bool:
             try:
                 btn_text = btn.text.strip().lower()
                 if btn_text in see_more_patterns:
-                    # Use JavaScript click - more reliable for React/Facebook
                     driver.execute_script("arguments[0].click();", btn)
-                    time.sleep(0.15)  # Brief wait for text to expand
                     return True
             except Exception:
                 continue
@@ -128,39 +121,19 @@ def click_see_more(driver: WebDriver, parent_element) -> bool:
         # Method 2: Find any element with exact "See more" text using XPath
         for pattern in ["See more", "Se mer", "Vis mer"]:
             try:
-                # Look for elements that have this exact text
                 xpath = f".//*[normalize-space(text())='{pattern}']"
                 elements = parent_element.find_elements(By.XPATH, xpath)
                 for elem in elements:
                     try:
-                        # Check if element is visible and clickable
                         if elem.is_displayed():
                             driver.execute_script("arguments[0].click();", elem)
-                            time.sleep(0.15)
                             return True
                     except Exception:
                         continue
             except Exception:
                 continue
-        
-        # Method 3: Find within the story_message container specifically
-        try:
-            message_divs = parent_element.find_elements(By.CSS_SELECTOR, "[data-ad-rendering-role='story_message']")
-            for msg_div in message_divs:
-                # Look for See more button inside the message
-                btns = msg_div.find_elements(By.CSS_SELECTOR, "div[role='button']")
-                for btn in btns:
-                    try:
-                        if btn.text.strip().lower() in see_more_patterns:
-                            driver.execute_script("arguments[0].click();", btn)
-                            time.sleep(0.15)
-                            return True
-                    except Exception:
-                        continue
-        except Exception:
-            pass
             
-    except Exception as e:
+    except Exception:
         pass  # Silently fail - not all posts have "See more"
     
     return False
@@ -172,9 +145,6 @@ def sort_by_new_posts(driver: WebDriver) -> bool:
     Returns True if successfully sorted, False otherwise.
     """
     try:
-        # Wait a moment for the sort button to be available
-        time.sleep(0.3)
-        
         # Facebook has a sort dropdown that shows "Most relevant" by default
         # We need to click it and select "New posts"
         
@@ -240,14 +210,12 @@ def sort_by_new_posts(driver: WebDriver) -> bool:
                     break
         
         if not sort_button:
-            print("    [SORT] Could not find sort button, using default order")
-            return False
+            return False  # Silent fail - don't log to keep output clean
         
         # Click the sort button to open dropdown
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", sort_button)
-        time.sleep(0.1)
         driver.execute_script("arguments[0].click();", sort_button)
-        time.sleep(0.3)
+        time.sleep(0.15)  # Brief wait for dropdown
         
         # Now find and click "New posts" option
         new_posts_texts = ["new posts", "nye innlegg", "nyeste innlegg", "newest", "new"]
@@ -280,20 +248,18 @@ def sort_by_new_posts(driver: WebDriver) -> bool:
         if not new_posts_option:
             # Close dropdown by clicking elsewhere
             driver.execute_script("document.body.click();")
-            print("    [SORT] Could not find 'New posts' option")
             return False
         
         # Click the "New posts" option
         driver.execute_script("arguments[0].click();", new_posts_option)
         print("    [SORT] Sorted by 'New posts'")
         
-        # Wait for page to refresh with new sorting
-        time.sleep(0.8)
+        # Brief wait for page to refresh with new sorting
+        time.sleep(0.3)
         
         return True
         
     except Exception as e:
-        print(f"    [SORT] Failed to sort: {str(e)[:50]}...")
         return False
 
 
@@ -314,100 +280,40 @@ def expand_all_see_more(driver: WebDriver) -> int:
             try:
                 btn_text = btn.text.strip().lower()
                 if btn_text in see_more_patterns:
-                    # Use JavaScript click
                     driver.execute_script("arguments[0].click();", btn)
                     clicked += 1
             except Exception:
                 continue
         
-        if clicked > 0:
-            time.sleep(0.3)  # Brief wait for expansions to complete
+        # No delay needed - JavaScript clicks are synchronous
             
-    except Exception as e:
+    except Exception:
         pass
     
     return clicked
 
 
-def get_timestamp_from_hover(driver: WebDriver, timestamp_element) -> str | None:
+def get_timestamp_fast(timestamp_element) -> str | None:
     """
-    Hover over a timestamp element to get the full datetime from the tooltip.
-    Facebook shows tooltips like "Sunday 1 February 2026 at 13:56" when hovering.
-    Returns the tooltip text or None if not found.
+    Get timestamp from element quickly without hovering.
+    Uses aria-label or text content directly.
+    Relative timestamps are converted by convert_relative_to_full_timestamp() later.
     """
     try:
-        # Hover over the element
-        actions = ActionChains(driver)
-        actions.move_to_element(timestamp_element).perform()
-        
-        # Wait for tooltip to appear (Facebook uses a div with role="tooltip" or similar)
-        time.sleep(0.25)
-        
-        # Try to find the tooltip - Facebook uses various tooltip implementations
-        tooltip_selectors = [
-            "div[role='tooltip']",
-            "div[data-testid='tooltip']", 
-            "span[role='tooltip']",
-            "div.x78zum5.x1n2onr6.xh8yej3 span",  # Common Facebook tooltip structure
-            "div[class*='tooltip']",
-        ]
-        
-        for selector in tooltip_selectors:
-            tooltips = driver.find_elements(By.CSS_SELECTOR, selector)
-            for tooltip in tooltips:
-                try:
-                    tooltip_text = tooltip.text.strip()
-                    
-                    # Skip if too long (probably grabbed post content instead of tooltip)
-                    if len(tooltip_text) > 60:
-                        continue
-                    
-                    # Skip if too short
-                    if len(tooltip_text) < 10:
-                        continue
-                    
-                    # Clean up trailing " ·" or similar
-                    tooltip_text = tooltip_text.rstrip(' ·').strip()
-                    
-                    # Check if it looks like a proper date/time format
-                    # Must have a month name AND either "at" with time OR a year
-                    month_names = ["january", "february", "march", "april", "may", "june",
-                                  "july", "august", "september", "october", "november", "december"]
-                    has_month = any(m in tooltip_text.lower() for m in month_names)
-                    has_time = " at " in tooltip_text.lower() and ":" in tooltip_text
-                    has_year = any(y in tooltip_text for y in ["2024", "2025", "2026", "2027"])
-                    
-                    # Valid formats:
-                    # "Sunday 1 February 2026 at 13:56" (day name + date + year + time)
-                    # "1 February at 13:56" (date + time, no year)
-                    if has_month and (has_time or has_year):
-                        # Move mouse away to close tooltip
-                        try:
-                            actions.move_by_offset(100, 100).perform()
-                        except:
-                            pass
-                        return tooltip_text
-                except:
-                    continue
-        
-        # Also try aria-label attribute on the element itself
+        # First try aria-label (often has full datetime)
         aria_label = timestamp_element.get_attribute("aria-label")
-        if aria_label and 10 < len(aria_label) < 60:
-            aria_label = aria_label.rstrip(' ·').strip()
-            month_names = ["january", "february", "march", "april", "may", "june",
-                          "july", "august", "september", "october", "november", "december"]
-            has_month = any(m in aria_label.lower() for m in month_names)
-            has_time = " at " in aria_label.lower() and ":" in aria_label
-            has_year = any(y in aria_label for y in ["2024", "2025", "2026", "2027"])
-            
-            if has_month and (has_time or has_year):
-                return aria_label
+        if aria_label and 5 < len(aria_label) < 60:
+            return aria_label.rstrip(' ·').strip()
         
-        # Move mouse away
-        try:
-            actions.move_by_offset(100, 100).perform()
-        except:
-            pass
+        # Try title attribute
+        title_attr = timestamp_element.get_attribute("title")
+        if title_attr and 5 < len(title_attr) < 60:
+            return title_attr.rstrip(' ·').strip()
+        
+        # Fall back to text content
+        text_content = timestamp_element.text.strip()
+        if text_content and len(text_content) < 50:
+            return text_content.rstrip(' ·').strip()
         
     except Exception:
         pass
@@ -423,14 +329,14 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
     driver.get(group_url)
 
     try:
-        wait = WebDriverWait(driver, 60)  # 60 second timeout for parallel mode
+        wait = WebDriverWait(driver, 90)  # 90 second timeout for parallel mode
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "[role='feed']")))
         wait.until(
             lambda d: d.find_elements(By.CSS_SELECTOR, "[role='feed'] [data-ad-rendering-role='story_message']")
             or d.find_elements(By.CSS_SELECTOR, "[role='feed'] [data-ad-preview='message']")
         )
     except TimeoutException:
-        print(f"[TIMEOUT] Page failed to load within 60s, skipping...")
+        print(f"[TIMEOUT] Page failed to load within 90s, skipping...")
         return []
 
     # Extract group name from page title
@@ -439,15 +345,9 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
     # Sort by "New posts" instead of "Most relevant" before scraping
     sort_by_new_posts(driver)
 
-    # Brief pause before starting
-    time.sleep(0.5)
-
     posts_dict: dict[str, Post] = {}
 
     for scroll_num in range(scroll_steps):
-        # Brief pause before reading posts
-        time.sleep(0.3)
-        
         # Expand all "See more" buttons on visible page before extracting text
         expand_all_see_more(driver)
         
@@ -574,15 +474,13 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
                                                         "march", "april", "may", "june", "july", "august",
                                                         "september", "october", "november", "december"]):
                                         
-                                        # Try to hover over this element to get the full datetime from tooltip
-                                        full_datetime = get_timestamp_from_hover(driver, elem)
+                                        # Get timestamp quickly without hovering
+                                        full_datetime = get_timestamp_fast(elem)
                                         if full_datetime:
-                                            # Clean up any trailing characters
-                                            timestamp = full_datetime.rstrip(' ·').strip()
+                                            timestamp = full_datetime
                                             timestamp_found = True
                                             break
                                         else:
-                                            # Fall back to the text content, cleaned up
                                             timestamp = text_content.rstrip(' ·').strip()
                                             timestamp_found = True
                                             break
@@ -634,10 +532,7 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         
         # Brief pause after scrolling for content to load
-        time.sleep(0.8)
-
-    # Final brief pause before collecting remaining posts
-    time.sleep(0.3)
+        time.sleep(0.4)
 
     # Final collection after scrolling
     # Expand all "See more" buttons before final collection
@@ -747,10 +642,10 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
                                                     "march", "april", "may", "june", "july", "august",
                                                     "september", "october", "november", "december"]):
                                     
-                                    # Try to hover for full datetime
-                                    full_datetime = get_timestamp_from_hover(driver, elem)
+                                    # Get timestamp quickly without hovering
+                                    full_datetime = get_timestamp_fast(elem)
                                     if full_datetime:
-                                        timestamp = full_datetime.rstrip(' ·').strip()
+                                        timestamp = full_datetime
                                     else:
                                         timestamp = text_content.rstrip(' ·').strip()
                                     break
@@ -798,9 +693,9 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
                                                   "at ", ":"]
                                 
                                 if any(ind in elem_text.lower() for ind in time_indicators):
-                                    full_dt = get_timestamp_from_hover(driver, elem)
+                                    full_dt = get_timestamp_fast(elem)
                                     if full_dt:
-                                        timestamp = full_dt.rstrip(' ·').strip()
+                                        timestamp = full_dt
                                         break
                                     elif len(elem_text) < 30:
                                         timestamp = elem_text.rstrip(' ·').strip()
