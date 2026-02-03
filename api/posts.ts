@@ -174,8 +174,9 @@ export default async function handler(
     }
 
     if (category) {
-      // Use eq for exact match on category
-      query = query.eq('category', category);
+      // Use ilike for case-insensitive match, escape special characters
+      const escapedCategory = category.replace(/%/g, '\\%').replace(/_/g, '\\_');
+      query = query.ilike('category', escapedCategory);
     }
 
     if (location) {
@@ -214,7 +215,8 @@ export default async function handler(
     }
 
     if (category) {
-      countQuery = countQuery.eq('category', category);
+      const escapedCategory = category.replace(/%/g, '\\%').replace(/_/g, '\\_');
+      countQuery = countQuery.ilike('category', escapedCategory);
     }
 
     if (location) {
