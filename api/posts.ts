@@ -183,33 +183,30 @@ export default async function handler(
 
     if (postsError) throw postsError;
 
-    // Apply category filtering with fallback keyword matching (same logic as frontend display)
+    // Apply category filtering - exact match between dropdown and post category
     let filteredPosts = allPosts || [];
     if (category) {
-      // Extract key words from the category filter for flexible matching
-      // "Transport / Moving" -> ["transport", "moving"]
-      const categoryWords = category.toLowerCase().split(/[\s\/]+/).filter(w => w.length > 2);
+      const categoryLower = category.toLowerCase().trim();
       
       filteredPosts = filteredPosts.filter(post => {
-        // First check if post has an AI-assigned category
-        if (post.category) {
-          const postCatLower = post.category.toLowerCase();
-          // Check if any category word matches
-          return categoryWords.some(word => postCatLower.includes(word));
+        // Get the post's category (from DB or fallback)
+        let postCategory = post.category || '';
+        
+        // If no category in DB, use keyword-based fallback (same as frontend display)
+        if (!postCategory) {
+          const content = ((post.title || '') + ' ' + (post.text || '')).toLowerCase();
+          if (content.match(/(elektriker|stikkontakt|lys|sikring|led|montering.*lys)/)) postCategory = 'Electrical';
+          else if (content.match(/(flytte|bære|transport|frakte|hente|kjøre|bil|henger)/)) postCategory = 'Transport / Moving';
+          else if (content.match(/(male|sparkle|pusse|oppussing|renovere|snekker|gulv|vegg)/)) postCategory = 'Painting / Renovation';
+          else if (content.match(/(vask|rengjøring|utvask|hage|klippe|måke|snø)/)) postCategory = 'Cleaning / Garden';
+          else if (content.match(/(rørlegger|rør|vann|vvs|avløp)/)) postCategory = 'Plumbing';
+          else if (content.match(/(montere|demontere|ikea|møbler|skap|seng|sofa)/)) postCategory = 'Assembly / Furniture';
+          else if (content.match(/(mekaniker|bremse|motor|verksted)/)) postCategory = 'Car Mechanic';
+          else postCategory = 'General';
         }
-        // Fallback: keyword-based categorization for posts without AI category
-        const content = ((post.title || '') + ' ' + (post.text || '')).toLowerCase();
-        let postCategory = 'General';
-        if (content.match(/(elektriker|stikkontakt|lys|sikring|led|montering.*lys)/)) postCategory = 'Electrical';
-        else if (content.match(/(flytte|bære|transport|frakte|hente|kjøre|bil|henger)/)) postCategory = 'Transport / Moving';
-        else if (content.match(/(male|sparkle|pusse|oppussing|renovere|snekker|gulv|vegg)/)) postCategory = 'Painting / Renovation';
-        else if (content.match(/(vask|rengjøring|utvask|hage|klippe|måke|snø)/)) postCategory = 'Cleaning / Garden';
-        else if (content.match(/(rørlegger|rør|vann|vvs|avløp)/)) postCategory = 'Plumbing';
-        else if (content.match(/(montere|demontere|ikea|møbler|skap|seng|sofa)/)) postCategory = 'Assembly / Furniture';
-        else if (content.match(/(mekaniker|bremse|motor|verksted)/)) postCategory = 'Mechanic / Car';
-        // Check if any category word matches the fallback category
-        const postCatLower = postCategory.toLowerCase();
-        return categoryWords.some(word => postCatLower.includes(word));
+        
+        // Exact match (case-insensitive)
+        return postCategory.toLowerCase().trim() === categoryLower;
       });
     }
 
