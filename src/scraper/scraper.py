@@ -173,6 +173,140 @@ def click_see_more(driver: WebDriver, parent_element) -> bool:
     return False
 
 
+def sort_by_new_posts(driver: WebDriver) -> bool:
+    """
+    Sort the Facebook group feed by 'New posts' instead of 'Most relevant'.
+    Returns True if successfully sorted, False otherwise.
+    """
+    try:
+        # Wait a moment for the sort button to be available
+        time.sleep(1)
+        
+        # Facebook has a sort dropdown that shows "Most relevant" by default
+        # We need to click it and select "New posts"
+        
+        # Method 1: Look for the sort button with text containing "Most relevant" or "Mest relevant"
+        sort_button_texts = ["most relevant", "mest relevant", "mest relevante"]
+        
+        # Try to find button/span with these texts
+        all_clickable = driver.find_elements(By.CSS_SELECTOR, "span, div[role='button']")
+        
+        sort_button = None
+        for elem in all_clickable:
+            try:
+                elem_text = elem.text.strip().lower()
+                if elem_text in sort_button_texts or any(t in elem_text for t in sort_button_texts):
+                    sort_button = elem
+                    break
+            except:
+                continue
+        
+        if not sort_button:
+            # Method 2: Try finding by specific Facebook class patterns or aria-labels
+            # Facebook uses aria-haspopup="menu" for dropdown buttons
+            dropdown_buttons = driver.find_elements(By.CSS_SELECTOR, "[aria-haspopup='menu'], [aria-haspopup='listbox']")
+            for btn in dropdown_buttons:
+                try:
+                    btn_text = btn.text.strip().lower()
+                    if any(t in btn_text for t in sort_button_texts):
+                        sort_button = btn
+                        break
+                except:
+                    continue
+        
+        if not sort_button:
+            # Method 3: Look in the feed header area for sort controls
+            feed = driver.find_element(By.CSS_SELECTOR, "[role='feed']")
+            # Look above the feed for sorting controls
+            parent = feed
+            for _ in range(5):
+                try:
+                    parent = parent.find_element(By.XPATH, "..")
+                except:
+                    break
+                spans = parent.find_elements(By.TAG_NAME, "span")
+                for span in spans:
+                    try:
+                        span_text = span.text.strip().lower()
+                        if span_text in sort_button_texts:
+                            # Found it - now we need the clickable parent
+                            clickable = span
+                            for _ in range(3):
+                                try:
+                                    clickable = clickable.find_element(By.XPATH, "..")
+                                    if clickable.get_attribute("role") == "button" or clickable.tag_name == "div":
+                                        sort_button = clickable
+                                        break
+                                except:
+                                    break
+                            if sort_button:
+                                break
+                    except:
+                        continue
+                if sort_button:
+                    break
+        
+        if not sort_button:
+            print("    [SORT] Could not find sort button, using default order")
+            return False
+        
+        # Click the sort button to open dropdown
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", sort_button)
+        time.sleep(0.3)
+        driver.execute_script("arguments[0].click();", sort_button)
+        time.sleep(0.5)
+        
+        # Now find and click "New posts" option
+        new_posts_texts = ["new posts", "nye innlegg", "nyeste innlegg", "newest", "new"]
+        
+        # Wait for dropdown menu to appear
+        time.sleep(0.5)
+        
+        # Look for menu items
+        menu_items = driver.find_elements(By.CSS_SELECTOR, "[role='menuitem'], [role='menuitemradio'], [role='option']")
+        
+        new_posts_option = None
+        for item in menu_items:
+            try:
+                item_text = item.text.strip().lower()
+                if any(t in item_text for t in new_posts_texts):
+                    new_posts_option = item
+                    break
+            except:
+                continue
+        
+        if not new_posts_option:
+            # Try looking for any clickable element with the new posts text
+            all_elements = driver.find_elements(By.CSS_SELECTOR, "span, div")
+            for elem in all_elements:
+                try:
+                    elem_text = elem.text.strip().lower()
+                    if elem_text in new_posts_texts or any(t == elem_text for t in new_posts_texts):
+                        new_posts_option = elem
+                        break
+                except:
+                    continue
+        
+        if not new_posts_option:
+            # Close dropdown by clicking elsewhere
+            driver.execute_script("document.body.click();")
+            print("    [SORT] Could not find 'New posts' option")
+            return False
+        
+        # Click the "New posts" option
+        driver.execute_script("arguments[0].click();", new_posts_option)
+        print("    [SORT] Sorted by 'New posts'")
+        
+        # Wait for page to refresh with new sorting
+        time.sleep(2)
+        
+        return True
+        
+    except Exception as e:
+        print(f"    [SORT] Failed to sort: {str(e)[:50]}...")
+        return False
+
+
 def expand_all_see_more(driver: WebDriver) -> int:
     """
     Click ALL 'See more' buttons visible on the page to expand all posts.
@@ -318,6 +452,9 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
 
     # Extract group name from page title
     group_name = driver.title.split("|")[0].strip() if "|" in driver.title else "Facebook Group"
+
+    # Sort by "New posts" instead of "Most relevant" before scraping
+    sort_by_new_posts(driver)
 
     # Random initial pause (1-3 seconds) - simulate human arriving at page
     time.sleep(random.uniform(1.0, 3.0))
