@@ -24,17 +24,31 @@ CHECK_INTERVAL_MINUTES = 10  # Wait between cycles (10 minutes recommended for f
 INSTANT_EMAIL_NOTIFICATIONS = True  # Send email for matching new posts immediately
 
 
-def create_driver():
-    """Create and return Edge WebDriver instance with robust Windows configuration."""
+def create_driver(instance_id: int = 0):
+    """
+    Create and return Edge WebDriver instance with robust Windows configuration.
+    
+    Args:
+        instance_id: Unique ID for this browser instance (used for parallel mode).
+                     Each instance gets its own profile folder and debug port.
+    """
     import logging
     import os
+    import uuid
     
     # Suppress Selenium and WebDriver logging
     logging.getLogger('selenium').setLevel(logging.WARNING)
     logging.getLogger('urllib3').setLevel(logging.WARNING)
     
     driver_path = Path(__file__).resolve().parent / "edgedriver" / "msedgedriver.exe"
-    user_data_dir = Path(__file__).resolve().parent / "edge_profile"
+    
+    # Create unique user data directory for each instance
+    if instance_id > 0:
+        # Parallel mode: create unique temp profile for each instance
+        user_data_dir = Path(__file__).resolve().parent / "edge_profiles" / f"instance_{instance_id}_{uuid.uuid4().hex[:8]}"
+    else:
+        # Sequential mode: use the standard profile
+        user_data_dir = Path(__file__).resolve().parent / "edge_profile"
     
     # Create user data directory if it doesn't exist
     user_data_dir.mkdir(parents=True, exist_ok=True)
@@ -52,7 +66,14 @@ def create_driver():
     options.add_argument("--no-first-run")
     options.add_argument("--no-default-browser-check")
     options.add_argument("--start-maximized")
-    options.add_argument("--remote-debugging-port=9222")
+    
+    # Use unique debugging port for each instance (or skip for parallel to avoid conflicts)
+    if instance_id == 0:
+        options.add_argument("--remote-debugging-port=9222")
+    else:
+        # Use dynamic port based on instance ID to avoid conflicts
+        debug_port = 9222 + instance_id
+        options.add_argument(f"--remote-debugging-port={debug_port}")
     
     # Suppress browser logging/errors
     options.add_argument("--log-level=3")  # Only fatal errors
@@ -68,8 +89,6 @@ def create_driver():
     )
     
     try:
-        # Suppress stderr to hide DevTools and GPU error messages
-        import subprocess
         driver = webdriver.Edge(service=service, options=options)
         driver.set_page_load_timeout(30)
         return driver

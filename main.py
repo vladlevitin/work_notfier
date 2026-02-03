@@ -170,8 +170,8 @@ def scrape_single_group(group_config: dict, group_idx: int, total_groups: int, o
     
     driver = None
     try:
-        # Create browser for this thread
-        driver = create_driver()
+        # Create browser for this thread with unique instance ID
+        driver = create_driver(instance_id=group_idx)
         
         with print_lock:
             print(f"[{group_idx}/{total_groups}] {group_name[:40]} - Starting...")
