@@ -154,9 +154,9 @@ def send_email_notification(posts: list[Post], group_url: str) -> None:
 
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     
-    # Send to Gmail only
+    # Send to single recipient
     recipients = [
-        {"emailAddress": {"address": "vladislavlevitin1999@gmail.com"}},
+        {"emailAddress": {"address": "levitinvlad99@gmail.com"}},
     ]
     
     payload = {
