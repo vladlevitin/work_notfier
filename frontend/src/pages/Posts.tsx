@@ -26,6 +26,23 @@ export function PostsPage() {
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const observerTarget = useRef<HTMLDivElement | null>(null);
 
+  // Helper function to get category for a post (same logic as display)
+  const getPostCategory = (post: Post): string => {
+    if (post.category) {
+      return post.category;
+    }
+    // Fallback: keyword-based categorization for posts without AI category
+    const content = (post.title + ' ' + post.text).toLowerCase();
+    if (content.match(/(elektriker|stikkontakt|lys|sikring|led|montering.*lys)/)) return 'Electrical';
+    if (content.match(/(flytte|bære|transport|frakte|hente|kjøre|bil|henger)/)) return 'Transport / Moving';
+    if (content.match(/(male|sparkle|pusse|oppussing|renovere|snekker|gulv|vegg)/)) return 'Painting / Renovation';
+    if (content.match(/(vask|rengjøring|utvask|hage|klippe|måke|snø)/)) return 'Cleaning / Garden';
+    if (content.match(/(rørlegger|rør|vann|vvs|avløp)/)) return 'Plumbing';
+    if (content.match(/(montere|demontere|ikea|møbler|skap|seng|sofa)/)) return 'Assembly / Furniture';
+    if (content.match(/(mekaniker|bremse|motor|verksted)/)) return 'Mechanic / Car';
+    return 'General';
+  };
+
   // Load posts
   const loadPosts = useCallback(async (reset: boolean = false) => {
     if (loadingRef.current) return;
@@ -43,26 +60,36 @@ export function PostsPage() {
     
     try {
       const currentOffset = reset ? 0 : offset;
+      // Don't send category to API - we filter client-side for consistency with display
       const response = await api.getPosts(
         PAGE_SIZE,
         currentOffset,
         groupFilter || undefined,
         searchFilter || undefined,
         showOnlyNew,
-        categoryFilter || undefined,
+        undefined,  // category filter applied client-side
         locationFilter || undefined
       );
       
+      // Apply category filter client-side using same logic as getCategoryDisplay
+      let filteredPosts = response.posts;
+      if (categoryFilter) {
+        filteredPosts = response.posts.filter(post => {
+          const postCategory = getPostCategory(post);
+          return postCategory.toLowerCase().includes(categoryFilter.toLowerCase());
+        });
+      }
+      
       if (reset) {
-        setPosts(response.posts);
+        setPosts(filteredPosts);
         setOffset(response.posts.length);
       } else {
-        setPosts(prev => [...prev, ...response.posts]);
+        setPosts(prev => [...prev, ...filteredPosts]);
         setOffset(prev => prev + response.posts.length);
       }
       
-      setTotal(response.total);
-      setHasMore(response.posts.length >= PAGE_SIZE && (reset ? response.posts.length : offset + response.posts.length) < response.total);
+      setTotal(categoryFilter ? filteredPosts.length : response.total);
+      setHasMore(!categoryFilter && response.posts.length >= PAGE_SIZE && (reset ? response.posts.length : offset + response.posts.length) < response.total);
     } catch (err: any) {
       setError(err.message || 'Failed to load posts');
     } finally {

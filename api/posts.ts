@@ -183,27 +183,11 @@ export default async function handler(
 
     if (postsError) throw postsError;
 
-    // Filter by category client-side (to avoid Supabase query issues with special chars)
-    let filteredPosts = allPosts || [];
-    if (category) {
-      const categoryLower = category.toLowerCase().trim();
-      console.log(`Filtering by category: "${category}" (lowercase: "${categoryLower}")`);
-      console.log(`Posts before filter: ${filteredPosts.length}`);
-      console.log(`Post categories: ${filteredPosts.map(p => p.category).join(', ')}`);
-      
-      filteredPosts = filteredPosts.filter(post => {
-        if (!post.category) return false;
-        const postCategoryLower = post.category.toLowerCase().trim();
-        const matches = postCategoryLower.includes(categoryLower);
-        console.log(`  "${post.category}" includes "${categoryLower}"? ${matches}`);
-        return matches;
-      });
-      
-      console.log(`Posts after filter: ${filteredPosts.length}`);
-    }
+    // Note: Category filtering is now done on the frontend for consistency with display logic
+    // The frontend uses keyword-based fallback categorization for posts without AI categories
 
     // Sort ALL posts by parsed timestamp (most recent first)
-    const sortedAllPosts = filteredPosts.sort((a, b) => {
+    const sortedAllPosts = (allPosts || []).sort((a, b) => {
       const dateA = parseFacebookTimestamp(a.timestamp || '');
       const dateB = parseFacebookTimestamp(b.timestamp || '');
       return dateB.getTime() - dateA.getTime(); // Descending order (newest first)
