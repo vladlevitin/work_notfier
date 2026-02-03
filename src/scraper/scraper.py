@@ -13,7 +13,7 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.common.exceptions import StaleElementReferenceException
+from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 
 
 def convert_relative_to_full_timestamp(timestamp_str: str) -> str:
@@ -305,12 +305,16 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
     """
     driver.get(group_url)
 
-    wait = WebDriverWait(driver, 20)
-    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "[role='feed']")))
-    wait.until(
-        lambda d: d.find_elements(By.CSS_SELECTOR, "[role='feed'] [data-ad-rendering-role='story_message']")
-        or d.find_elements(By.CSS_SELECTOR, "[role='feed'] [data-ad-preview='message']")
-    )
+    try:
+        wait = WebDriverWait(driver, 30)  # 30 second timeout
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "[role='feed']")))
+        wait.until(
+            lambda d: d.find_elements(By.CSS_SELECTOR, "[role='feed'] [data-ad-rendering-role='story_message']")
+            or d.find_elements(By.CSS_SELECTOR, "[role='feed'] [data-ad-preview='message']")
+        )
+    except TimeoutException:
+        print(f"[TIMEOUT] Page failed to load within 30s, skipping...")
+        return []
 
     # Extract group name from page title
     group_name = driver.title.split("|")[0].strip() if "|" in driver.title else "Facebook Group"
