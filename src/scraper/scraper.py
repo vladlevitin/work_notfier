@@ -157,22 +157,33 @@ def is_error_page(driver: WebDriver) -> bool:
         return False
 
 
-def sort_by_new_posts(driver: WebDriver, retry_count: int = 0) -> bool:
+def sort_by_new_posts(driver: WebDriver, group_url: str = None, retry_count: int = 0) -> bool:
     """
     Sort the Facebook group feed by 'New posts' instead of 'Most relevant'.
     Returns True if successfully sorted, False otherwise.
     Will reload page and retry if Facebook shows an error page.
     """
-    MAX_RETRIES = 2
+    MAX_RETRIES = 3
     
     try:
         # Check if we're on an error page first
         if is_error_page(driver):
             if retry_count < MAX_RETRIES:
                 print("    [SORT] Error page detected, reloading...")
-                driver.refresh()
-                time.sleep(2)  # Wait for page to reload
-                return sort_by_new_posts(driver, retry_count + 1)
+                # Navigate back to group URL if available, otherwise refresh
+                if group_url:
+                    driver.get(group_url)
+                else:
+                    driver.refresh()
+                time.sleep(3)  # Wait for page to fully reload
+                # Wait for feed to load
+                try:
+                    WebDriverWait(driver, 30).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "[role='feed']"))
+                    )
+                except:
+                    pass
+                return sort_by_new_posts(driver, group_url, retry_count + 1)
             else:
                 print("    [SORT] Error page persists after retries")
                 return False
@@ -286,16 +297,27 @@ def sort_by_new_posts(driver: WebDriver, retry_count: int = 0) -> bool:
         driver.execute_script("arguments[0].click();", new_posts_option)
         print("    [SORT] Sorted by 'New posts'")
         
-        # Brief wait for page to refresh with new sorting
-        time.sleep(0.5)
+        # Wait for page to refresh with new sorting
+        time.sleep(1.0)
         
         # Check if error page appeared after clicking
         if is_error_page(driver):
             if retry_count < MAX_RETRIES:
                 print("    [SORT] Error page after sort click, reloading...")
-                driver.refresh()
-                time.sleep(2)
-                return sort_by_new_posts(driver, retry_count + 1)
+                # Navigate back to group URL if available, otherwise refresh
+                if group_url:
+                    driver.get(group_url)
+                else:
+                    driver.refresh()
+                time.sleep(3)
+                # Wait for feed to load
+                try:
+                    WebDriverWait(driver, 30).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "[role='feed']"))
+                    )
+                except:
+                    pass
+                return sort_by_new_posts(driver, group_url, retry_count + 1)
             else:
                 print("    [SORT] Error page persists after retries")
                 return False
@@ -386,7 +408,7 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
     group_name = driver.title.split("|")[0].strip() if "|" in driver.title else "Facebook Group"
 
     # Sort by "New posts" instead of "Most relevant" before scraping
-    sort_by_new_posts(driver)
+    sort_by_new_posts(driver, group_url)
 
     posts_dict: dict[str, Post] = {}
 
