@@ -157,6 +157,38 @@ def is_error_page(driver: WebDriver) -> bool:
         return False
 
 
+def click_reload_button(driver: WebDriver) -> bool:
+    """
+    Click the 'Reload page' button on Facebook error pages.
+    Returns True if button was found and clicked, False otherwise.
+    """
+    try:
+        # Look for the Reload page button by aria-label or text
+        reload_selectors = [
+            "[aria-label='Reload page']",
+            "[aria-label='Last inn siden på nytt']",  # Norwegian
+            "div[role='button']"
+        ]
+        
+        for selector in reload_selectors:
+            buttons = driver.find_elements(By.CSS_SELECTOR, selector)
+            for btn in buttons:
+                try:
+                    btn_text = btn.text.strip().lower()
+                    if "reload" in btn_text or "last inn" in btn_text:
+                        driver.execute_script("arguments[0].click();", btn)
+                        print("    [SORT] Clicked 'Reload page' button")
+                        time.sleep(3)  # Wait for page to reload
+                        return True
+                except:
+                    continue
+        
+        # If no button found, try refreshing
+        return False
+    except:
+        return False
+
+
 def sort_by_new_posts(driver: WebDriver, group_url: str = None, retry_count: int = 0) -> bool:
     """
     Sort the Facebook group feed by 'New posts' instead of 'Most relevant'.
@@ -170,17 +202,22 @@ def sort_by_new_posts(driver: WebDriver, group_url: str = None, retry_count: int
         if is_error_page(driver):
             if retry_count < MAX_RETRIES:
                 print("    [SORT] Error page detected, reloading...")
-                # Navigate back to group URL if available, otherwise refresh
-                if group_url:
-                    driver.get(group_url)
-                else:
-                    driver.refresh()
-                time.sleep(3)  # Wait for page to fully reload
+                
+                # First, try clicking the "Reload page" button
+                if not click_reload_button(driver):
+                    # If button not found, navigate back to group URL
+                    if group_url:
+                        driver.get(group_url)
+                    else:
+                        driver.refresh()
+                    time.sleep(3)
+                
                 # Wait for feed to load
                 try:
                     WebDriverWait(driver, 30).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, "[role='feed']"))
                     )
+                    time.sleep(2)  # Extra wait for content to load
                 except:
                     pass
                 return sort_by_new_posts(driver, group_url, retry_count + 1)
@@ -305,17 +342,22 @@ def sort_by_new_posts(driver: WebDriver, group_url: str = None, retry_count: int
         if is_error_page(driver):
             if retry_count < MAX_RETRIES:
                 print("    [SORT] Error page after sort click, reloading...")
-                # Navigate back to group URL if available, otherwise refresh
-                if group_url:
-                    driver.get(group_url)
-                else:
-                    driver.refresh()
-                time.sleep(3)
+                
+                # First, try clicking the "Reload page" button
+                if not click_reload_button(driver):
+                    # If button not found, navigate back to group URL
+                    if group_url:
+                        driver.get(group_url)
+                    else:
+                        driver.refresh()
+                    time.sleep(3)
+                
                 # Wait for feed to load
                 try:
                     WebDriverWait(driver, 30).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, "[role='feed']"))
                     )
+                    time.sleep(2)  # Extra wait for content to load
                 except:
                     pass
                 return sort_by_new_posts(driver, group_url, retry_count + 1)
