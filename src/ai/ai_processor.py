@@ -21,11 +21,12 @@ CATEGORIES = {
     "Electrical": "Electrician work, wiring, lights, mirrors with electrical connections, outlets, fuse boxes, stove guards",
     "Plumbing": "Pipes, water, drains, toilets, sinks, showers, bathrooms (water-related)",
     "Transport / Moving": "Moving furniture/items from one place to another, helping with relocation, transporting goods, pickup/delivery services, moving companies (flytting, flytte, hente, levere, transport)",
+    "Manual Labor": "Heavy lifting, carrying heavy items, physical work, loading/unloading, demolition, removal work, outdoor physical labor - no qualifications required",
     "Painting / Renovation": "Painting walls, spackling, wallpaper, renovation, construction work, tiling (fliser), carpentry",
     "Cleaning / Garden": "House cleaning, garden work, lawn care, window washing, snow removal",
     "Assembly / Furniture": "IKEA assembly, furniture mounting, shelves, TV mounting, disassembly",
     "Car Mechanic": "Car repairs, car inspections, brakes, engine, mechanical work on vehicles, tire changes (dekk), bilmekaniker, car sounds/noises, vehicle diagnostics - ANY work ON the car itself",
-    "Handyman / Misc": "Small repairs, odd jobs, demolition, removal of items",
+    "Handyman / Misc": "Small repairs, odd jobs that don't fit other categories",
     "IT / Tech": "Computer help, phone repair, smart home, technical support",
     "General": "Only use if NOTHING else fits"
 }
@@ -49,28 +50,33 @@ def is_service_request(title: str, text: str) -> bool:
             messages=[
                 {"role": "system", "content": """You analyze Norwegian/English job postings to classify them as REQUEST or OFFER.
 
-OFFER (return "OFFER") - Someone is ADVERTISING their services:
+OFFER (return "OFFER") - Someone is ADVERTISING/OFFERING their services:
 - "Tilbyr..." / "Vi tilbyr..." / "Jeg tilbyr..."
-- "Utfører..." / "Vi utfører..."
-- "Jeg kan hjelpe med..."
+- "Utfører..." / "Vi utfører..."  
+- "Jeg kan hjelpe med..." / "Jeg kan..."
+- Posts that LIST MULTIPLE SERVICES they can provide (like a menu of services)
+- "TRENGER DU HJELP?" followed by listing what THEY can do = OFFER
 - "Ledig kapasitet..." / "Vi har ledig tid..."
-- "Ta kontakt for tilbud..."
+- "Ta kontakt for tilbud..." / "Send meg PM"
 - "Rimelige priser..." / "Gode priser..."
 - "Erfaren [profession] tilbyr..."
-- "Flyttebyrå trenger..." (company looking for workers = OFFER)
-- Any advertisement for a company/service
+- Someone describing their experience/qualifications
+- "Ønsker kun seriøse henvendelser" (only serious inquiries)
+- Company/business/professional advertising services
 - Looking to HIRE workers for their business
+- "Flyttebyrå trenger..." (company looking for workers)
 
-REQUEST (return "REQUEST") - Someone NEEDS help/service:
+REQUEST (return "REQUEST") - Someone NEEDS a specific job done:
 - "Trenger hjelp med..." / "Trenger noen som kan..."
 - "Ser etter noen som kan..."
-- "Ønsker å få..." / "Ønsker hjelp til..."
-- "Noen som kan...?" (asking if someone can help)
-- "Hva koster det å...?" (asking for price)
-- Individual person needing a specific job done
+- "Ønsker å få [specific task]..." 
+- "Noen som kan [specific task]?" (asking for help with ONE specific task)
+- "Hva koster det å...?" (asking for price quote)
+- Individual person needing ONE specific job done
+- Asking for help with a concrete, specific task
 
-IMPORTANT: If someone mentions they are a company, business, or professional offering services, it's an OFFER.
-If an individual is asking for help with a specific task, it's a REQUEST.
+CRITICAL: If someone lists MULTIPLE services they offer, it's an OFFER, not a request.
+If someone says "Jeg kan..." (I can...) they are OFFERING, not requesting.
 
 Respond with ONLY one word: REQUEST or OFFER"""},
                 {"role": "user", "content": content}
@@ -185,58 +191,40 @@ Classify posts accurately into the MOST SPECIFIC category. Always respond with v
 
 def is_driving_job(title: str, text: str) -> bool:
     """
-    Use AI to determine if a post involves transport, moving, or delivery work.
+    Determine if a post is primarily about DRIVING/TRANSPORT work.
     
-    Returns True if the post is about transporting/moving items or people.
+    Driving must be the PRIMARY task, not a secondary mention.
+    Examples of YES: moving furniture, transporting items from A to B, delivery work
+    Examples of NO: someone offering many services where driving is just one option
     """
-    # Quick keyword check first - if obvious transport keywords, return True immediately
-    combined = (title + " " + text).lower()
-    transport_keywords = [
-        # Moving/relocation
-        "flytte", "flytting", "flyttehjelp", "flyttelass", "flyttebyrå",
-        # Transport/delivery
-        "frakte", "transport", "transportere", "bortkjøring", "bortkjøre",
-        "hente og levere", "hente noe", "levere noe", "levering",
-        # Vehicles
-        "varebil", "henger", "lastebil", "pickup",
-        # Carrying/lifting
-        "bære opp", "bærehjelp", "løftehjelp", "bære ned",
-        # Location-based transport
-        "fra oslo til", "fra sted til", "til oslo", "fra asker",
-        # Additional transport terms
-        "kjøre", "kjøring", "sjåfør", "henting", "frakt"
-    ]
-    
-    for keyword in transport_keywords:
-        if keyword in combined:
-            return True
-    
     content = f"Title: {title}\n\nPost content:\n{text[:1500]}"
     
     try:
         response = client.chat.completions.create(
             model="gpt-5.2-chat-latest",
             messages=[
-                {"role": "system", "content": """You determine if a job post involves TRANSPORT, MOVING, or DELIVERY work.
+                {"role": "system", "content": """Determine if DRIVING/TRANSPORT is the PRIMARY job in this post.
 
-Answer "YES" if the post involves ANY of these:
-- Moving items/furniture from one place to another (flytting, flytte, bære)
-- Transporting things (frakte, transport, hente, levere, bortkjøring)
-- Pickup or delivery services (hente noe, levere noe)
-- Someone needs a vehicle/driver (varebil, henger, bil, sjåfør)
-- Relocation help (flyttehjelp, bærehjelp)
-- Carrying/lifting items (bære opp, løfte)
+Answer "YES" ONLY if the MAIN task is:
+- Moving/transporting items or furniture from location A to location B
+- Driving someone's belongings during a move (flytting, flytte)
+- Transporting/delivering specific items (frakte, transport, levere)
+- Pickup service where driving is the main job (hente noe fra X til Y)
+- Someone needs a vehicle with driver (varebil, henger)
+- Driving a person from A to B as the main service
 
-Answer "NO" only if:
-- The post is about car REPAIRS/mechanics (bilmekaniker, verksted, reparere bil)
-- The post is purely about cleaning, painting, plumbing, electrical with NO transport element
-- The post is offering transport services (not requesting them)
+Answer "NO" if:
+- Driving is just ONE of many services listed (like babysitting, cleaning, shopping, dog walking, etc.)
+- The post mentions "Jeg kan kjøre deg" as a minor add-on to other services
+- The main job is something else (cleaning, repairs, childcare) with driving as secondary
+- Someone is OFFERING services (not requesting)
+- The post is about car repairs/mechanics
+- The post lists multiple unrelated services they offer
 
-Norwegian keywords that indicate YES:
-flytte, flytting, frakte, transport, hente, levere, bære, bortkjøring, varebil, henger, kjøre, bil
+CRITICAL: If the post lists multiple different services (like shopping, babysitting, cleaning, pet care, etc.) and driving is just one option among many - answer NO.
 
-Be INCLUSIVE - if transport/moving is mentioned, answer YES."""},
-                {"role": "user", "content": f"Does this post involve transport, moving, or delivery work? Answer only YES or NO.\n\n{content}"}
+Only answer YES if transporting items/people from A to B is the MAIN purpose of the job request."""},
+                {"role": "user", "content": f"Is DRIVING/TRANSPORT the PRIMARY job in this post? Answer only YES or NO.\n\n{content}"}
             ],
             temperature=0.1,
             max_tokens=10
@@ -247,6 +235,51 @@ Be INCLUSIVE - if transport/moving is mentioned, answer YES."""},
         
     except Exception:
         # If AI fails, be conservative and don't send email
+        return False
+
+
+def is_manual_labor_job(title: str, text: str) -> bool:
+    """
+    Determine if a post is about MANUAL LABOR work (heavy lifting, carrying, physical work).
+    
+    This is for low-skill labor that doesn't require qualifications.
+    """
+    content = f"Title: {title}\n\nPost content:\n{text[:1500]}"
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-5.2-chat-latest",
+            messages=[
+                {"role": "system", "content": """Determine if this post is requesting MANUAL LABOR / PHYSICAL WORK.
+
+Answer "YES" if the MAIN task involves:
+- Heavy lifting (løfte tungt, bære tungt)
+- Carrying heavy items (bære møbler, bære ting)
+- Moving furniture within a building (not transport between locations)
+- Physical demolition/removal work (rive, fjerne, rydde)
+- Loading/unloading items (laste, losse)
+- Garden/outdoor physical work (grave, måke snø, klippe)
+- Assembly requiring physical effort (montere møbler)
+- General physical helper work (hjelpe med tungt arbeid)
+
+Answer "NO" if:
+- It's primarily about DRIVING/TRANSPORT (that's a different category)
+- It requires professional qualifications (electrician, plumber, etc.)
+- It's about cleaning, babysitting, pet care, or skilled trades
+- Someone is OFFERING services (not requesting)
+- The physical work is just a small part of a larger skilled job
+
+This is for LOW-SKILL physical labor that someone can do without special qualifications."""},
+                {"role": "user", "content": f"Is this post requesting MANUAL LABOR / PHYSICAL WORK? Answer only YES or NO.\n\n{content}"}
+            ],
+            temperature=0.1,
+            max_tokens=10
+        )
+        
+        result = response.choices[0].message.content.strip().upper()
+        return "YES" in result
+        
+    except Exception:
         return False
 
 

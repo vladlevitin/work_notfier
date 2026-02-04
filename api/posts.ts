@@ -197,6 +197,7 @@ export default async function handler(
           const content = ((post.title || '') + ' ' + (post.text || '')).toLowerCase();
           if (content.match(/(elektriker|stikkontakt|lys|sikring|led|montering.*lys)/)) postCategory = 'Electrical';
           else if (content.match(/(flytte|bære|transport|frakte|hente|kjøre|bil|henger)/)) postCategory = 'Transport / Moving';
+          else if (content.match(/(løfte|tungt|bære tungt|laste|losse|rive|fjerne|rydde|grave)/)) postCategory = 'Manual Labor';
           else if (content.match(/(male|sparkle|pusse|oppussing|renovere|snekker|gulv|vegg)/)) postCategory = 'Painting / Renovation';
           else if (content.match(/(vask|rengjøring|utvask|hage|klippe|måke|snø)/)) postCategory = 'Cleaning / Garden';
           else if (content.match(/(rørlegger|rør|vann|vvs|avløp)/)) postCategory = 'Plumbing';

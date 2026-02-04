@@ -35,6 +35,7 @@ export function PostsPage() {
     const content = (post.title + ' ' + post.text).toLowerCase();
     if (content.match(/(elektriker|stikkontakt|lys|sikring|led|montering.*lys)/)) return 'Electrical';
     if (content.match(/(flytte|bære|transport|frakte|hente|kjøre|bil|henger)/)) return 'Transport / Moving';
+    if (content.match(/(løfte|tungt|bære tungt|laste|losse|rive|fjerne|rydde|grave)/)) return 'Manual Labor';
     if (content.match(/(male|sparkle|pusse|oppussing|renovere|snekker|gulv|vegg)/)) return 'Painting / Renovation';
     if (content.match(/(vask|rengjøring|utvask|hage|klippe|måke|snø)/)) return 'Cleaning / Garden';
     if (content.match(/(rørlegger|rør|vann|vvs|avløp)/)) return 'Plumbing';
@@ -213,6 +214,7 @@ export function PostsPage() {
   // All predefined categories (matching AI processor categories exactly)
   const allCategories = [
     'Transport / Moving',
+    'Manual Labor',
     'Electrical',
     'Plumbing',
     'Painting / Renovation',
@@ -236,6 +238,8 @@ export function PostsPage() {
         'Plumbing': '🔧',
         'Transport': '🚚',
         'Moving': '🚚',
+        'Manual': '💪',
+        'Labor': '💪',
         'Painting': '🎨',
         'Renovation': '🎨',
         'Cleaning': '🧹',
@@ -258,6 +262,7 @@ export function PostsPage() {
     const content = (post.title + ' ' + post.text).toLowerCase();
     if (content.match(/(elektriker|stikkontakt|lys|sikring|led|montering.*lys)/)) return { icon: '⚡', name: 'Electrical' };
     if (content.match(/(flytte|bære|transport|frakte|hente|kjøre|bil|henger)/)) return { icon: '🚚', name: 'Transport / Moving' };
+    if (content.match(/(løfte|tungt|bære tungt|laste|losse|rive|fjerne|rydde|grave)/)) return { icon: '💪', name: 'Manual Labor' };
     if (content.match(/(male|sparkle|pusse|oppussing|renovere|snekker|gulv|vegg)/)) return { icon: '🎨', name: 'Painting / Renovation' };
     if (content.match(/(vask|rengjøring|utvask|hage|klippe|måke|snø)/)) return { icon: '🧹', name: 'Cleaning / Garden' };
     if (content.match(/(rørlegger|rør|vann|vvs|avløp)/)) return { icon: '🔧', name: 'Plumbing' };

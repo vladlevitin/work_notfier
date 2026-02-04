@@ -6,6 +6,7 @@ import os
 import time
 import signal
 import sys
+import subprocess
 from pathlib import Path
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -19,8 +20,77 @@ from src.scraper import scrape_facebook_group, filter_posts_by_keywords, print_p
 from monitor import create_driver
 from src.database import save_posts, mark_as_notified, post_exists
 from src.notifications import send_email_notification
-from src.ai.ai_processor import is_service_request, is_driving_job, process_post_with_ai
+from src.ai.ai_processor import is_service_request, is_driving_job, is_manual_labor_job, process_post_with_ai
 from config.settings import load_facebook_groups, KEYWORDS
+
+
+def close_scraper_edge_instances() -> None:
+    """
+    Close only Edge browser instances that are using THIS project's profile folders.
+    Matches: edge_profile, edge_profile_1, edge_profile_2, etc.
+    ONLY in the work_notifier directory.
+    Leaves ALL other Edge browser windows open.
+    """
+    try:
+        # Get the EXACT profile path prefix for THIS project
+        script_dir = Path(__file__).resolve().parent
+        
+        # The path pattern we're looking for (case-insensitive)
+        # This matches: .../work_notifier/edge_profile and .../work_notifier/edge_profile_X
+        profile_path_pattern = str(script_dir / "edge_profile").lower()
+        
+        # Use WMIC to get Edge processes with their command lines
+        result = subprocess.run(
+            ["wmic", "process", "where", "name='msedge.exe'", "get", "processid,commandline"],
+            capture_output=True,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        )
+        
+        killed_count = 0
+        if result.returncode == 0 and result.stdout:
+            lines = result.stdout.strip().split('\n')
+            for line in lines[1:]:  # Skip header
+                if not line.strip():
+                    continue
+                
+                line_lower = line.lower()
+                
+                # Check if this Edge instance uses our profile path
+                # This matches edge_profile, edge_profile_1, edge_profile_2, etc.
+                is_our_instance = profile_path_pattern in line_lower
+                
+                if is_our_instance:
+                    # Extract PID (last number in the line)
+                    parts = line.split()
+                    if parts:
+                        pid = parts[-1]
+                        if pid.isdigit():
+                            subprocess.run(
+                                ["taskkill", "/F", "/PID", pid],
+                                capture_output=True,
+                                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+                            )
+                            killed_count += 1
+        
+        # Kill msedgedriver.exe processes (these are only from automation)
+        subprocess.run(
+            ["taskkill", "/F", "/IM", "msedgedriver.exe"],
+            capture_output=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        )
+        
+        if killed_count > 0:
+            print(f"[CLEANUP] Closed {killed_count} scraper Edge instance(s)")
+        else:
+            print("[CLEANUP] No scraper Edge instances to close")
+        
+        # Small delay to ensure processes are fully terminated
+        time.sleep(0.5)
+        
+    except Exception as e:
+        print(f"[CLEANUP] Could not check Edge instances: {e}")
+
 
 # =============================================================================
 # CONFIGURATION TOGGLES
@@ -28,12 +98,16 @@ from config.settings import load_facebook_groups, KEYWORDS
 SCRAPE_INTERVAL_MINUTES = int(os.getenv("SCRAPE_INTERVAL_MINUTES", "0"))  # Default: 0 = loop immediately
 CLEAR_DATABASE_ON_START = True   # Set to False to keep existing posts
 MAX_POST_AGE_HOURS = 24  # Only notify for posts within this many hours
-PARALLEL_MODE = True  # True = parallel scraping, False = sequential
-MAX_PARALLEL_BROWSERS = 3  # Limit concurrent browsers to avoid resource issues (3-4 recommended)
+PARALLEL_MODE = False  # False = one browser, loop through groups one by one
+PERSISTENT_BROWSERS = False  # Not used in sequential mode
+MAX_PARALLEL_BROWSERS = 9  # Not used in sequential mode
 # =============================================================================
 
 # Thread-safe print lock for parallel mode
 print_lock = threading.Lock()
+
+# Global persistent browser pool: {group_idx: driver}
+persistent_drivers = {}
 
 
 def is_post_recent(post: dict, max_hours: int = 24, log_skip: bool = True) -> bool:
@@ -123,16 +197,17 @@ def check_openai_api_key() -> bool:
         # Make a minimal API call to verify the key
         response = client.chat.completions.create(
             model="gpt-5.2-chat-latest",
-            messages=[{"role": "user", "content": "Say 'OK' if you can read this."}],
-            max_completion_tokens=5
+            messages=[{"role": "user", "content": "Say OK"}],
+            max_completion_tokens=10
         )
         
         if response.choices and response.choices[0].message.content:
             print("[OK] OpenAI API key verified - connection successful!")
             return True
         else:
-            print("[WARNING] OpenAI API returned empty response")
-            return False
+            # Even if empty response, key is valid - just proceed
+            print("[OK] OpenAI API key accepted (no content in test response)")
+            return True
             
     except Exception as e:
         print(f"[ERROR] OpenAI API key verification failed: {str(e)}")
@@ -204,8 +279,9 @@ def scrape_single_group(group_config: dict, group_idx: int, total_groups: int, o
             print(f"[{group_idx}/{total_groups}] {group_name[:40]} - Found {result['scraped']} -> {len(posts)} new")
         
         # Check for moving/transport jobs and send immediate emails
+        # This works with keyword matching even if OpenAI is not available
         notified_count = 0
-        if posts and openai_ok:
+        if posts:
             for post in posts:
                 if not is_post_recent(post, MAX_POST_AGE_HOURS, log_skip=False):
                     continue
@@ -213,13 +289,20 @@ def scrape_single_group(group_config: dict, group_idx: int, total_groups: int, o
                 title = post.get('title', '')
                 text = post.get('text', '')
                 
+                # is_driving_job uses keyword matching first, then AI as fallback
                 if is_driving_job(title, text):
                     post["category"] = "Transport / Moving"
                     with print_lock:
-                        print(f"[{group_idx}/{total_groups}] {group_name[:40]} - TRANSPORT JOB! Sending email...")
-                    send_email_notification([post], group_url)
-                    mark_as_notified([post["post_id"]])
-                    notified_count += 1
+                        print(f"[EMAIL] TRANSPORT JOB detected - sending notification...")
+                    try:
+                        send_email_notification([post], group_url)
+                        mark_as_notified([post["post_id"]])
+                        notified_count += 1
+                        with print_lock:
+                            print(f"[EMAIL] Notification sent successfully")
+                    except Exception as e:
+                        with print_lock:
+                            print(f"[EMAIL] Failed to send: {str(e)[:50]}")
         
         result["notified"] = notified_count
         
@@ -283,14 +366,11 @@ def prepare_browser_profiles(num_instances: int) -> None:
     from pathlib import Path
     
     main_profile = Path(__file__).resolve().parent / "edge_profile"
-    profiles_dir = Path(__file__).resolve().parent / "edge_profiles"
+    script_dir = Path(__file__).resolve().parent
     
-    # Create profiles directory
-    profiles_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Copy profile to each instance folder in parallel
+    # Copy profile to each numbered folder (edge_profile_1, edge_profile_2, etc.)
     def copy_profile(idx):
-        instance_dir = profiles_dir / f"instance_{idx}"
+        instance_dir = script_dir / f"edge_profile_{idx}"
         if instance_dir.exists():
             try:
                 shutil.rmtree(instance_dir)
@@ -304,6 +384,274 @@ def prepare_browser_profiles(num_instances: int) -> None:
     # Copy all profiles in parallel
     with ThreadPoolExecutor(max_workers=num_instances) as executor:
         list(executor.map(copy_profile, range(1, num_instances + 1)))
+
+
+def create_persistent_browsers(facebook_groups: list) -> dict:
+    """
+    Create persistent browser instances for all groups at startup.
+    Returns a dictionary mapping group_idx to driver.
+    """
+    global persistent_drivers
+    
+    num_groups = len(facebook_groups)
+    print(f"\n[*] Creating {num_groups} persistent browser windows...")
+    
+    # Prepare profiles first
+    prepare_browser_profiles(num_groups)
+    
+    # Create browsers in parallel
+    def create_browser(idx):
+        try:
+            driver = create_driver(instance_id=idx)
+            with print_lock:
+                print(f"    [BROWSER {idx}/{num_groups}] Created")
+            return (idx, driver)
+        except Exception as e:
+            with print_lock:
+                print(f"    [BROWSER {idx}/{num_groups}] Failed: {str(e)[:30]}")
+            return (idx, None)
+    
+    with ThreadPoolExecutor(max_workers=num_groups) as executor:
+        results = list(executor.map(create_browser, range(1, num_groups + 1)))
+    
+    # Store in global dict
+    persistent_drivers = {idx: driver for idx, driver in results if driver is not None}
+    
+    success_count = len(persistent_drivers)
+    print(f"[*] Successfully created {success_count}/{num_groups} browsers")
+    
+    return persistent_drivers
+
+
+def close_persistent_browsers() -> None:
+    """Close all persistent browser instances."""
+    global persistent_drivers
+    
+    if not persistent_drivers:
+        return
+    
+    print("\n[*] Closing persistent browsers...")
+    closed_count = 0
+    for idx, driver in persistent_drivers.items():
+        try:
+            driver.quit()
+            closed_count += 1
+        except:
+            pass
+    
+    persistent_drivers = {}
+    print(f"[*] Closed {closed_count} browser(s)")
+    
+    # Force-kill any remaining scraper Edge instances
+    close_scraper_edge_instances()
+
+
+def scrape_group_with_persistent_driver(driver, group_config: dict, group_idx: int, total_groups: int, openai_ok: bool, retry_count: int = 0) -> dict:
+    """
+    Scrape a single Facebook group using an existing persistent browser.
+    The driver is NOT closed after scraping.
+    Includes retry logic for timeout errors.
+    """
+    MAX_RETRIES = 2
+    group_name = group_config['name']
+    group_url = group_config['url']
+    scroll_steps = group_config.get('scroll_steps', 5)
+    
+    result = {
+        "group_name": group_name,
+        "scraped": 0,
+        "new_saved": 0,
+        "skipped_existing": 0,
+        "skipped_unknown": 0,
+        "skipped_offers": 0,
+        "notified": 0,
+        "error": None
+    }
+    
+    # Small stagger delay based on group index to avoid all hitting at once
+    if retry_count == 0:
+        stagger_delay = (group_idx - 1) * 0.5  # 0.5 second stagger between groups
+        time.sleep(stagger_delay)
+    
+    try:
+        with print_lock:
+            retry_msg = f" (retry {retry_count})" if retry_count > 0 else ""
+            print(f"[{group_idx}/{total_groups}] {group_name[:40]} - Scraping...{retry_msg}")
+        
+        # Scrape the group (driver already exists, just navigate)
+        posts = scrape_facebook_group(driver, group_url, scroll_steps=scroll_steps)
+        result["scraped"] = len(posts)
+        
+        # Filter out posts with unknown IDs
+        unknown_count = sum(1 for p in posts if p.get('post_id') == 'unknown')
+        if unknown_count > 0:
+            posts = [p for p in posts if p.get('post_id') != 'unknown']
+            result["skipped_unknown"] = unknown_count
+        
+        # Filter out existing posts
+        existing_count = 0
+        if posts:
+            new_posts_only = []
+            for post in posts:
+                post_id = post.get('post_id')
+                if post_id and post_exists(post_id):
+                    existing_count += 1
+                else:
+                    new_posts_only.append(post)
+            result["skipped_existing"] = existing_count
+            posts = new_posts_only
+        
+        with print_lock:
+            print(f"[{group_idx}/{total_groups}] {group_name[:40]} - Found {result['scraped']} -> {len(posts)} new")
+        
+        # Check for moving/transport jobs and send immediate emails
+        notified_count = 0
+        if posts:
+            for post in posts:
+                if not is_post_recent(post, MAX_POST_AGE_HOURS, log_skip=False):
+                    continue
+                
+                title = post.get('title', '')
+                text = post.get('text', '')
+                
+                if is_driving_job(title, text):
+                    post["category"] = "Transport / Moving"
+                    with print_lock:
+                        print(f"[EMAIL] TRANSPORT JOB detected - sending notification...")
+                    try:
+                        send_email_notification([post], group_url)
+                        mark_as_notified([post["post_id"]])
+                        notified_count += 1
+                        with print_lock:
+                            print(f"[EMAIL] Notification sent successfully")
+                    except Exception as e:
+                        with print_lock:
+                            print(f"[EMAIL] Failed to send: {str(e)[:50]}")
+        
+        result["notified"] = notified_count
+        
+        # AI filtering for service requests
+        offers_count = 0
+        if openai_ok and posts:
+            filtered_posts = []
+            for post in posts:
+                if is_service_request(post.get('title', ''), post.get('text', '')):
+                    filtered_posts.append(post)
+                else:
+                    offers_count += 1
+            result["skipped_offers"] = offers_count
+            posts = filtered_posts
+        
+        # Filter old posts
+        if posts:
+            posts = [p for p in posts if is_post_recent(p, MAX_POST_AGE_HOURS, log_skip=False)]
+        
+        # Categorize with AI
+        if openai_ok and posts:
+            for post in posts:
+                if not post.get("category"):
+                    try:
+                        ai_result = process_post_with_ai(
+                            post.get('title', ''),
+                            post.get('text', ''),
+                            post.get('post_id', '')
+                        )
+                        post["category"] = ai_result.get("category", "General")
+                        if ai_result.get("location"):
+                            post["location"] = ai_result.get("location")
+                    except Exception:
+                        post["category"] = "General"
+        
+        # Save to database
+        if posts:
+            new_count, _ = save_posts(posts)
+            result["new_saved"] = new_count
+        
+        with print_lock:
+            print(f"[{group_idx}/{total_groups}] {group_name[:40]} - DONE (saved {result['new_saved']})")
+        
+    except Exception as e:
+        error_msg = str(e)[:100]
+        
+        # Check if it's a timeout error and we haven't exceeded retries
+        is_timeout = "timeout" in error_msg.lower() or "timed out" in error_msg.lower()
+        
+        if is_timeout and retry_count < MAX_RETRIES:
+            with print_lock:
+                print(f"[{group_idx}/{total_groups}] {group_name[:40]} - Timeout, retrying...")
+            # Wait a bit before retry
+            time.sleep(2)
+            # Retry with incremented counter
+            return scrape_group_with_persistent_driver(driver, group_config, group_idx, total_groups, openai_ok, retry_count + 1)
+        
+        result["error"] = error_msg
+        with print_lock:
+            print(f"[{group_idx}/{total_groups}] {group_name[:40]} - ERROR: {error_msg[:40]}")
+    
+    # NOTE: Driver is NOT closed here - it stays open for next cycle
+    return result
+
+
+def run_scrape_cycle_persistent(facebook_groups: list, openai_ok: bool, cycle_num: int) -> dict:
+    """
+    Run a scrape cycle using persistent browsers.
+    All groups are scraped simultaneously using their assigned browsers.
+    """
+    global persistent_drivers
+    
+    cycle_start = datetime.now()
+    num_groups = len(facebook_groups)
+    
+    print(f"\n{'='*80}")
+    print(f"CYCLE {cycle_num} | {cycle_start.strftime('%H:%M:%S')} | {num_groups} groups | PERSISTENT BROWSERS")
+    print(f"{'='*80}")
+    
+    total_stats = {
+        "scraped": 0,
+        "skipped_existing": 0,
+        "skipped_unknown": 0,
+        "skipped_offers": 0,
+        "new_saved": 0,
+        "notified": 0,
+        "errors": 0
+    }
+    
+    # Scrape all groups simultaneously using their persistent drivers
+    def scrape_with_driver(args):
+        idx, group_config = args
+        driver = persistent_drivers.get(idx)
+        if driver is None:
+            return {"error": "No driver available", "group_name": group_config['name']}
+        return scrape_group_with_persistent_driver(driver, group_config, idx, num_groups, openai_ok)
+    
+    # Run all scrapes in parallel
+    with ThreadPoolExecutor(max_workers=num_groups) as executor:
+        args_list = [(idx, group) for idx, group in enumerate(facebook_groups, 1)]
+        results = list(executor.map(scrape_with_driver, args_list))
+    
+    # Aggregate stats
+    for result in results:
+        total_stats["scraped"] += result.get("scraped", 0)
+        total_stats["skipped_existing"] += result.get("skipped_existing", 0)
+        total_stats["skipped_unknown"] += result.get("skipped_unknown", 0)
+        total_stats["skipped_offers"] += result.get("skipped_offers", 0)
+        total_stats["new_saved"] += result.get("new_saved", 0)
+        total_stats["notified"] += result.get("notified", 0)
+        if result.get("error"):
+            total_stats["errors"] += 1
+    
+    # Print cycle summary
+    cycle_duration = (datetime.now() - cycle_start).seconds
+    print(f"\n{'='*80}")
+    print(f"CYCLE {cycle_num} COMPLETE | {cycle_duration}s | {num_groups} groups simultaneously")
+    print(f"{'='*80}")
+    print(f"  Scraped: {total_stats['scraped']:>4} posts from {num_groups} groups")
+    print(f"  Skipped: {total_stats['skipped_unknown']:>4} unknown | {total_stats['skipped_existing']:>4} in DB | {total_stats['skipped_offers']:>4} offers")
+    print(f"  Saved:   {total_stats['new_saved']:>4} new posts")
+    if total_stats["errors"] > 0:
+        print(f"  Errors:  {total_stats['errors']:>4} groups failed")
+    
+    return total_stats
 
 
 def run_scrape_cycle_parallel(facebook_groups: list, openai_ok: bool, cycle_num: int) -> dict:
@@ -680,40 +1028,11 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
         print(f" -> {len(posts)} new")
         
         # ==========================================================================
-        # IMMEDIATE EMAIL CHECK - Before any other processing!
-        # Check each new post for moving/transport and email RIGHT AWAY
+        # STEP 1: Filter out SERVICE OFFERS first (keep only requests)
         # ==========================================================================
-        if posts and openai_ok:
-            print(f"    Checking {len(posts)} posts for moving/transport jobs...")
-            for post in posts:
-                # Only check recent posts
-                if not is_post_recent(post, MAX_POST_AGE_HOURS, log_skip=False):
-                    print(f"    [SKIP] Too old: {post.get('title', '')[:40]}...")
-                    continue
-                
-                # Check if it's a moving/transport job
-                title = post.get('title', '')
-                text = post.get('text', '')
-                print(f"    [CHECK] {title[:50]}...", end=" ", flush=True)
-                
-                if is_driving_job(title, text):
-                    print(f"-> YES! TRANSPORT JOB DETECTED!")
-                    # Set category before sending email
-                    post["category"] = "Transport / Moving"
-                    print(f"    [EMAIL] To: vladislavlevitin1999@gmail.com")
-                    print(f"    [EMAIL] Subject: Transport / Moving | {post.get('timestamp', 'Unknown')} | {title[:40]}...")
-                    send_email_notification([post], group_url)
-                    mark_as_notified([post["post_id"]])
-                    new_relevant_posts.append(post)
-                    print(f"    [EMAIL] Sent successfully!")
-                else:
-                    print(f"-> No (not moving/transport)")
-        # ==========================================================================
-        
-        # Only run AI filtering on new posts
         offers_count = 0
         if openai_ok and posts:
-            print(f"    AI filtering...", end=" ", flush=True)
+            print(f"    Filtering offers...", end=" ", flush=True)
             filtered_posts = []
             
             for post in posts:
@@ -725,6 +1044,50 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
             skipped_offers += offers_count
             posts = filtered_posts
             print(f"kept {len(posts)} requests, removed {offers_count} offers")
+        
+        # ==========================================================================
+        # STEP 2: Check for DRIVING and MANUAL LABOR jobs (email immediately)
+        # Only check posts that passed the offer filter
+        # ==========================================================================
+        if posts and openai_ok:
+            print(f"    Checking {len(posts)} posts for jobs...")
+            for post in posts:
+                # Only check recent posts
+                if not is_post_recent(post, MAX_POST_AGE_HOURS, log_skip=False):
+                    continue
+                
+                title = post.get('title', '')
+                text = post.get('text', '')
+                print(f"    [CHECK] {title[:45]}...", end=" ", flush=True)
+                
+                # Check for DRIVING job (primary category)
+                if is_driving_job(title, text):
+                    print(f"-> DRIVING JOB!")
+                    post["category"] = "Transport / Moving"
+                    print(f"    [EMAIL] Driving job: {title[:50]}...")
+                    try:
+                        send_email_notification([post], group_url)
+                        mark_as_notified([post["post_id"]])
+                        new_relevant_posts.append(post)
+                        print(f"    [EMAIL] Sent!")
+                    except Exception as e:
+                        print(f"    [EMAIL] Failed: {str(e)[:30]}")
+                
+                # Check for MANUAL LABOR job (secondary category)
+                elif is_manual_labor_job(title, text):
+                    print(f"-> MANUAL LABOR!")
+                    post["category"] = "Manual Labor"
+                    print(f"    [EMAIL] Manual labor: {title[:50]}...")
+                    try:
+                        send_email_notification([post], group_url)
+                        mark_as_notified([post["post_id"]])
+                        new_relevant_posts.append(post)
+                        print(f"    [EMAIL] Sent!")
+                    except Exception as e:
+                        print(f"    [EMAIL] Failed: {str(e)[:30]}")
+                else:
+                    print(f"-> Other job type")
+        # ==========================================================================
         
         # Filter out old posts BEFORE saving (don't save posts older than MAX_POST_AGE_HOURS)
         if posts:
@@ -809,13 +1172,21 @@ def main() -> int:
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
+    # Close any existing scraper Edge instances to prevent profile lock conflicts
+    close_scraper_edge_instances()
+    
     # Display start info
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print("\n" + "="*80)
     print("FACEBOOK WORK NOTIFIER - CONTINUOUS MONITORING MODE")
     print(f"Started: {timestamp}")
     print(f"Scrape interval: {SCRAPE_INTERVAL_MINUTES} minutes")
-    print(f"Mode: {'PARALLEL (all groups simultaneously)' if PARALLEL_MODE else 'Sequential'}")
+    if PERSISTENT_BROWSERS and PARALLEL_MODE:
+        print("Mode: PERSISTENT (browsers stay open, all groups simultaneously)")
+    elif PARALLEL_MODE:
+        print("Mode: PARALLEL (browsers open/close each cycle)")
+    else:
+        print("Mode: Sequential")
     print("Press Ctrl+C to stop gracefully")
     print("="*80)
     
@@ -844,10 +1215,15 @@ def main() -> int:
     
     # Determine scraping mode
     use_parallel = PARALLEL_MODE
+    use_persistent = PERSISTENT_BROWSERS and use_parallel
     
     driver = None
-    if use_parallel:
-        print(f"\n[*] Parallel mode: {len(facebook_groups)} browser windows will launch simultaneously")
+    if use_persistent:
+        # Create persistent browsers for all groups (stay open between cycles)
+        print(f"\n[*] Persistent mode: Creating {len(facebook_groups)} browser windows...")
+        create_persistent_browsers(facebook_groups)
+    elif use_parallel:
+        print(f"\n[*] Parallel mode: {len(facebook_groups)} browser windows will launch per cycle")
     else:
         print("\n[*] Starting browser (sequential mode)...")
         driver = create_driver()
@@ -865,7 +1241,10 @@ def main() -> int:
         while not shutdown_requested:
             cycle_num += 1
             
-            if use_parallel:
+            if use_persistent:
+                # Run with persistent browsers (all groups simultaneously, browsers stay open)
+                stats = run_scrape_cycle_persistent(facebook_groups, openai_ok, cycle_num)
+            elif use_parallel:
                 # Run parallel scrape cycle (all groups simultaneously in separate windows)
                 stats = run_scrape_cycle_parallel(facebook_groups, openai_ok, cycle_num)
             else:
@@ -882,7 +1261,6 @@ def main() -> int:
                     driver = create_driver()
                     print("[OK] Browser restarted, continuing...")
                     continue
-                continue
             
             # Update total stats
             total_stats["cycles"] += 1
@@ -919,16 +1297,43 @@ def main() -> int:
         print(f"\n[OK] Graceful shutdown complete.")
 
     finally:
+        # Close persistent browsers if used
+        if persistent_drivers:
+            close_persistent_browsers()
+        # Close sequential mode driver if used
         if driver:
             print("\n[*] Closing browser...")
             driver.quit()
+        # Final cleanup: kill any remaining scraper Edge instances
+        close_scraper_edge_instances()
 
     return 0
 
 
+def cleanup_on_exit():
+    """Cleanup function called on script exit."""
+    global persistent_drivers
+    if persistent_drivers:
+        close_persistent_browsers()
+    close_scraper_edge_instances()
+
+
 if __name__ == "__main__":
+    import atexit
+    atexit.register(cleanup_on_exit)
+    
     try:
         sys.exit(main())
     except KeyboardInterrupt:
         print("\n[!] Interrupted by user")
+        # Clean up persistent browsers on interrupt
+        if persistent_drivers:
+            close_persistent_browsers()
+        # Kill any remaining scraper Edge instances
+        close_scraper_edge_instances()
         sys.exit(0)
+    except Exception as e:
+        print(f"\n[!] Unexpected error: {e}")
+        # Ensure cleanup on any error
+        close_scraper_edge_instances()
+        sys.exit(1)

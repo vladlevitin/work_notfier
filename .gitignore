@@ -32,8 +32,10 @@ wheels/
 *.db
 *.db-journal
 
-# Edge Profile
+# Edge Profiles (main and numbered instances)
 edge_profile/
+edge_profile_*/
+edge_profiles/
 
 # Other projects (not part of this repo)
 tinder_automation/
