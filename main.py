@@ -27,17 +27,26 @@ from config.settings import load_facebook_groups, KEYWORDS
 def close_scraper_edge_instances() -> None:
     """
     Close only Edge browser instances that are using THIS project's profile folders.
-    Matches: edge_profile, edge_profile_1, edge_profile_2, etc.
-    ONLY in the work_notifier directory.
-    Leaves ALL other Edge browser windows open.
+    Matches ONLY profiles in the work_notifier directory:
+    - edge_profile/
+    - edge_profile_1/, edge_profile_2/, etc.
+    - edge_profiles/instance_1/, etc.
+    
+    Leaves ALL other Edge browser windows open (personal browsing, other projects).
     """
     try:
-        # Get the EXACT profile path prefix for THIS project
+        # Get the EXACT project directory path
         script_dir = Path(__file__).resolve().parent
+        project_path = str(script_dir).lower()
         
-        # The path pattern we're looking for (case-insensitive)
-        # This matches: .../work_notifier/edge_profile and .../work_notifier/edge_profile_X
-        profile_path_pattern = str(script_dir / "edge_profile").lower()
+        # Profile patterns specific to THIS project only
+        # Must contain the work_notifier project path AND a profile folder
+        profile_patterns = [
+            (project_path + "\\edge_profile").replace("/", "\\"),  # edge_profile, edge_profile_1, etc.
+            (project_path + "/edge_profile").replace("\\", "/"),   # Unix-style path
+            (project_path + "\\edge_profiles").replace("/", "\\"), # edge_profiles folder
+            (project_path + "/edge_profiles").replace("\\", "/"),  # Unix-style
+        ]
         
         # Use WMIC to get Edge processes with their command lines
         result = subprocess.run(
@@ -56,9 +65,8 @@ def close_scraper_edge_instances() -> None:
                 
                 line_lower = line.lower()
                 
-                # Check if this Edge instance uses our profile path
-                # This matches edge_profile, edge_profile_1, edge_profile_2, etc.
-                is_our_instance = profile_path_pattern in line_lower
+                # Check if this Edge instance uses any of our profile paths
+                is_our_instance = any(pattern in line_lower for pattern in profile_patterns)
                 
                 if is_our_instance:
                     # Extract PID (last number in the line)
