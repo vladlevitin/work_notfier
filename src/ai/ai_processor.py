@@ -20,9 +20,9 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 CATEGORIES = {
     "Electrical": "Electrician work, wiring, lights, mirrors with electrical connections, outlets, fuse boxes, stove guards",
     "Plumbing": "Pipes, water, drains, toilets, sinks, showers, bathrooms (water-related)",
-    "Transport / Moving": "Moving furniture/items from one place to another, helping with relocation, transporting goods, pickup/delivery services, moving companies (flytting, flytte, hente, levere, transport)",
+    "Transport / Moving": "ONLY for: Moving/relocating (flytte, flytting), transporting items/furniture from A to B, pickup/delivery services, needing a moving van (flyttebil). NOT for demolition, repairs, or renovation work",
     "Manual Labor": "Heavy lifting, carrying heavy items, physical work, loading/unloading, demolition, removal work, outdoor physical labor - no qualifications required",
-    "Painting / Renovation": "Painting walls, spackling, wallpaper, renovation, construction work, tiling (fliser), carpentry",
+    "Painting / Renovation": "Painting walls, spackling, wallpaper, renovation, construction work, tiling (fliser), carpentry, demolition (rive, riving), removing walls or structures",
     "Cleaning / Garden": "House cleaning, garden work, lawn care, window washing, snow removal",
     "Assembly / Furniture": "IKEA assembly, furniture mounting, shelves, TV mounting, disassembly",
     "Car Mechanic": "Car repairs, car inspections, brakes, engine, mechanical work on vehicles, tire changes (dekk), bilmekaniker, car sounds/noises, vehicle diagnostics - ANY work ON the car itself",
@@ -191,11 +191,12 @@ Classify posts accurately into the MOST SPECIFIC category. Always respond with v
 
 def is_driving_job(title: str, text: str) -> bool:
     """
-    Determine if a post is primarily about DRIVING/TRANSPORT work.
+    Determine if a post is about MOVING/TRANSPORT work.
     
-    Driving must be the PRIMARY task, not a secondary mention.
-    Examples of YES: moving furniture, transporting items from A to B, delivery work
-    Examples of NO: someone offering many services where driving is just one option
+    This function should match posts where someone needs help with:
+    - Moving (flytte, flytting, flyttebil)
+    - Transporting items (transport, frakte, hente, levere)
+    - Delivery/pickup services
     """
     content = f"Title: {title}\n\nPost content:\n{text[:1500]}"
     
@@ -203,28 +204,25 @@ def is_driving_job(title: str, text: str) -> bool:
         response = client.chat.completions.create(
             model="gpt-5.2-chat-latest",
             messages=[
-                {"role": "system", "content": """Determine if DRIVING/TRANSPORT is the PRIMARY job in this post.
+                {"role": "system", "content": """Determine if this post is a REQUEST for MOVING or TRANSPORT help.
 
-Answer "YES" ONLY if the MAIN task is:
-- Moving/transporting items or furniture from location A to location B
-- Driving someone's belongings during a move (flytting, flytte)
-- Transporting/delivering specific items (frakte, transport, levere)
-- Pickup service where driving is the main job (hente noe fra X til Y)
-- Someone needs a vehicle with driver (varebil, henger)
-- Driving a person from A to B as the main service
+Answer "YES" if the person is ASKING FOR HELP with:
+- Moving/relocating (flytte, flytting, skal flytte, trenger hjelp til å flytte)
+- Needing a moving van or vehicle (flyttebil, varebil, henger)
+- Transporting items from A to B (transport, frakte, hente, levere)
+- Picking up or delivering something (hente noe, levere noe)
+- Moving furniture or belongings
 
 Answer "NO" if:
-- Driving is just ONE of many services listed (like babysitting, cleaning, shopping, dog walking, etc.)
-- The post mentions "Jeg kan kjøre deg" as a minor add-on to other services
-- The main job is something else (cleaning, repairs, childcare) with driving as secondary
-- Someone is OFFERING services (not requesting)
-- The post is about car repairs/mechanics
-- The post lists multiple unrelated services they offer
+- Someone is OFFERING/ADVERTISING their services (not requesting)
+- The post lists MULTIPLE services they can do (like "I can do cleaning, shopping, driving...")
+- The main task is demolition, renovation, or repairs (not moving)
+- The main task is car repairs/mechanics
+- It's about something unrelated to moving/transport
 
-CRITICAL: If the post lists multiple different services (like shopping, babysitting, cleaning, pet care, etc.) and driving is just one option among many - answer NO.
-
-Only answer YES if transporting items/people from A to B is the MAIN purpose of the job request."""},
-                {"role": "user", "content": f"Is DRIVING/TRANSPORT the PRIMARY job in this post? Answer only YES or NO.\n\n{content}"}
+IMPORTANT: If someone says "trenger hjelp til å flytte" (need help to move) or similar - that's a YES.
+Focus on whether they are REQUESTING moving/transport help, not offering it."""},
+                {"role": "user", "content": f"Is this a REQUEST for MOVING/TRANSPORT help? Answer only YES or NO.\n\n{content}"}
             ],
             temperature=0.1,
             max_tokens=10
