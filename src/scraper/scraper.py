@@ -163,29 +163,58 @@ def click_reload_button(driver: WebDriver) -> bool:
     Returns True if button was found and clicked, False otherwise.
     """
     try:
-        # Look for the Reload page button by aria-label or text
-        reload_selectors = [
-            "[aria-label='Reload page']",
-            "[aria-label='Last inn siden på nytt']",  # Norwegian
-            "div[role='button']"
-        ]
+        # Method 1: Find by exact aria-label (most reliable)
+        try:
+            reload_btn = driver.find_element(By.CSS_SELECTOR, "div[aria-label='Reload page'][role='button']")
+            driver.execute_script("arguments[0].click();", reload_btn)
+            print("    [SORT] Clicked 'Reload page' button")
+            time.sleep(4)  # Wait for page to reload
+            return True
+        except:
+            pass
         
-        for selector in reload_selectors:
-            buttons = driver.find_elements(By.CSS_SELECTOR, selector)
-            for btn in buttons:
-                try:
-                    btn_text = btn.text.strip().lower()
-                    if "reload" in btn_text or "last inn" in btn_text:
-                        driver.execute_script("arguments[0].click();", btn)
-                        print("    [SORT] Clicked 'Reload page' button")
-                        time.sleep(3)  # Wait for page to reload
-                        return True
-                except:
-                    continue
+        # Method 2: Norwegian version
+        try:
+            reload_btn = driver.find_element(By.CSS_SELECTOR, "div[aria-label='Last inn siden på nytt'][role='button']")
+            driver.execute_script("arguments[0].click();", reload_btn)
+            print("    [SORT] Clicked 'Reload page' button (Norwegian)")
+            time.sleep(4)
+            return True
+        except:
+            pass
         
-        # If no button found, try refreshing
+        # Method 3: Find by text content
+        buttons = driver.find_elements(By.CSS_SELECTOR, "div[role='button']")
+        for btn in buttons:
+            try:
+                if "reload page" in btn.text.lower() or "last inn siden" in btn.text.lower():
+                    driver.execute_script("arguments[0].click();", btn)
+                    print("    [SORT] Clicked 'Reload page' button (by text)")
+                    time.sleep(4)
+                    return True
+            except:
+                continue
+        
+        # Method 4: Find span with reload text and click its parent button
+        spans = driver.find_elements(By.TAG_NAME, "span")
+        for span in spans:
+            try:
+                if span.text.strip().lower() == "reload page":
+                    # Find parent button
+                    parent = span
+                    for _ in range(5):
+                        parent = parent.find_element(By.XPATH, "..")
+                        if parent.get_attribute("role") == "button":
+                            driver.execute_script("arguments[0].click();", parent)
+                            print("    [SORT] Clicked 'Reload page' button (via span)")
+                            time.sleep(4)
+                            return True
+            except:
+                continue
+        
         return False
-    except:
+    except Exception as e:
+        print(f"    [SORT] Could not find reload button: {str(e)[:30]}")
         return False
 
 
