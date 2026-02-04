@@ -24,39 +24,43 @@ from src.ai.ai_processor import is_service_request, is_driving_job, is_manual_la
 from config.settings import load_facebook_groups, KEYWORDS
 
 
-def close_scraper_edge_instances() -> None:
+def _force_close_edge_profile(user_data_dir: str, profile_directory: str = "Default") -> int:
     """
-    Close only Edge browser instances that are using THIS project's edge_profile folder.
+    Close ONLY Edge processes for a specific profile (Windows).
     
-    Uses the same approach as tinder_automation: PowerShell + Get-CimInstance to find
-    Edge processes with matching --user-data-dir flag, then Stop-Process to close them.
+    EXACT COPY of tinder_automation's _force_close_edge_profile() function.
+    This avoids killing unrelated Edge windows that may be using other profiles.
+    We match processes by their command line flags:
+    - --user-data-dir=<user_data_dir>
+    - --profile-directory=<profile_directory>
     
-    ONLY closes instances where --user-data-dir matches this project's edge_profile path.
-    Leaves ALL other Edge browser windows open (personal browsing, other projects).
+    Returns the number of processes killed.
     """
-    if sys.platform != "win32":
-        return
+    import platform
+    if platform.system() != "Windows":
+        return 0
+    
+    try:
+        user_data_dir = str(Path(user_data_dir))
+    except Exception:
+        user_data_dir = str(user_data_dir)
     
     try:
         import re
         
-        # Get the EXACT path to THIS project's edge_profile folder
-        script_dir = Path(__file__).resolve().parent
-        user_data_dir = str(script_dir / "edge_profile")
-        
-        # Escape for regex in PowerShell
+        # Build a PowerShell script that finds msedge.exe processes with matching flags and stops them.
+        # Handle both quoted and unquoted forms in the command line.
         udd_pat = re.escape(user_data_dir)
+        prof_pat = re.escape(profile_directory)
         
-        # PowerShell script to find and kill Edge processes with matching --user-data-dir
-        # Same approach as tinder_automation's _force_close_edge_profile()
-        ps_script = rf"""
+        ps = rf"""
 $ErrorActionPreference = 'SilentlyContinue'
 $procs = Get-CimInstance Win32_Process -Filter "Name='msedge.exe'"
 $killed = 0
 foreach ($p in $procs) {{
   $cmd = $p.CommandLine
   if ([string]::IsNullOrWhiteSpace($cmd)) {{ continue }}
-  if ($cmd -match '--user-data-dir="?{udd_pat}"?') {{
+  if ($cmd -match '--user-data-dir="?{udd_pat}"?' -and $cmd -match '--profile-directory="?{prof_pat}"?') {{
     try {{
       Stop-Process -Id $p.ProcessId -Force
       $killed++
@@ -67,31 +71,56 @@ Write-Output $killed
 """
         
         result = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", ps_script],
+            ["powershell", "-NoProfile", "-Command", ps],
             capture_output=True,
             text=True,
-            creationflags=subprocess.CREATE_NO_WINDOW
+            check=False,
         )
-        
-        # Parse killed count from output
         killed_str = (result.stdout or "").strip().splitlines()[-1] if (result.stdout or "").strip() else "0"
         try:
-            killed_count = int(killed_str)
+            killed = int(killed_str)
         except Exception:
-            killed_count = 0
+            killed = 0
+        
+        return killed
+    except Exception:
+        return 0
+
+
+def close_scraper_edge_instances() -> None:
+    """
+    Close only Edge browser instances that are using THIS project's edge_profile folder.
+    
+    Uses the EXACT same approach as tinder_automation's _force_close_edge_profile():
+    - Matches BOTH --user-data-dir AND --profile-directory flags
+    - Only closes instances where BOTH match this project's edge_profile + Default
+    
+    Leaves ALL other Edge browser windows open (personal browsing, other projects).
+    """
+    if sys.platform != "win32":
+        return
+    
+    try:
+        # Get the EXACT path to THIS project's edge_profile folder
+        script_dir = Path(__file__).resolve().parent
+        user_data_dir = str(script_dir / "edge_profile")
+        profile_directory = "Default"  # Same as tinder_automation
+        
+        # Use the same function as tinder_automation
+        killed_count = _force_close_edge_profile(user_data_dir, profile_directory)
+        
+        if killed_count > 0:
+            print(f"[CLEANUP] Closed {killed_count} Edge instance(s) for profile '{profile_directory}'")
+        else:
+            print(f"[CLEANUP] No Edge instances found for profile '{profile_directory}'")
         
         # Also kill msedgedriver.exe processes (these are only from automation)
         subprocess.run(
             ["powershell", "-NoProfile", "-Command", 
              "Get-Process msedgedriver -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"],
             capture_output=True,
-            creationflags=subprocess.CREATE_NO_WINDOW
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         )
-        
-        if killed_count > 0:
-            print(f"[CLEANUP] Closed {killed_count} scraper Edge instance(s)")
-        else:
-            print("[CLEANUP] No scraper Edge instances to close")
         
         # Small delay to ensure processes are fully terminated
         time.sleep(0.5)

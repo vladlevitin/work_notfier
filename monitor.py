@@ -66,7 +66,10 @@ def create_driver(instance_id: int = 0):
     
     options = Options()
     options.use_chromium = True
+    # Same approach as tinder_automation: set both user-data-dir and profile-directory
+    # This allows precise matching when closing Edge instances (only closes THIS profile)
     options.add_argument(f"--user-data-dir={user_data_dir}")
+    options.add_argument("--profile-directory=Default")
     
     # Critical Windows stability flags
     options.add_argument("--no-sandbox")
