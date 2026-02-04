@@ -20,7 +20,7 @@ from src.scraper import scrape_facebook_group, filter_posts_by_keywords, print_p
 from monitor import create_driver
 from src.database import save_posts, mark_as_notified, post_exists
 from src.notifications import send_email_notification
-from src.ai.ai_processor import is_service_request, is_driving_job, is_manual_labor_job, process_post_with_ai
+from src.ai.ai_processor import is_service_request, process_post_with_ai
 from config.settings import load_facebook_groups, KEYWORDS
 
 
@@ -319,33 +319,9 @@ def scrape_single_group(group_config: dict, group_idx: int, total_groups: int, o
         with print_lock:
             print(f"[{group_idx}/{total_groups}] {group_name[:40]} - Found {result['scraped']} -> {len(posts)} new")
         
-        # Check for moving/transport jobs and send immediate emails
-        # This works with keyword matching even if OpenAI is not available
-        notified_count = 0
+        # Filter old posts first
         if posts:
-            for post in posts:
-                if not is_post_recent(post, MAX_POST_AGE_HOURS, log_skip=False):
-                    continue
-                
-                title = post.get('title', '')
-                text = post.get('text', '')
-                
-                # is_driving_job uses keyword matching first, then AI as fallback
-                if is_driving_job(title, text):
-                    post["category"] = "Transport / Moving"
-                    with print_lock:
-                        print(f"[EMAIL] TRANSPORT JOB detected - sending notification...")
-                    try:
-                        send_email_notification([post], group_url)
-                        mark_as_notified([post["post_id"]])
-                        notified_count += 1
-                        with print_lock:
-                            print(f"[EMAIL] Notification sent successfully")
-                    except Exception as e:
-                        with print_lock:
-                            print(f"[EMAIL] Failed to send: {str(e)[:50]}")
-        
-        result["notified"] = notified_count
+            posts = [p for p in posts if is_post_recent(p, MAX_POST_AGE_HOURS, log_skip=False)]
         
         # AI filtering for service requests
         offers_count = 0
@@ -359,25 +335,41 @@ def scrape_single_group(group_config: dict, group_idx: int, total_groups: int, o
             result["skipped_offers"] = offers_count
             posts = filtered_posts
         
-        # Filter old posts
-        if posts:
-            posts = [p for p in posts if is_post_recent(p, MAX_POST_AGE_HOURS, log_skip=False)]
+        # Categorize with AI and send emails for relevant categories
+        EMAIL_CATEGORIES = ["Transport / Moving", "Manual Labor"]
+        notified_count = 0
         
-        # Categorize with AI
         if openai_ok and posts:
             for post in posts:
-                if not post.get("category"):
+                title = post.get('title', '')
+                text = post.get('text', '')
+                
+                # Categorize with AI
+                try:
+                    ai_result = process_post_with_ai(title, text, post.get('post_id', ''))
+                    category = ai_result.get("category", "General")
+                    post["category"] = category
+                    if ai_result.get("location"):
+                        post["location"] = ai_result.get("location")
+                except Exception:
+                    category = "General"
+                    post["category"] = category
+                
+                # Send email if category matches
+                if category in EMAIL_CATEGORIES:
+                    with print_lock:
+                        print(f"[EMAIL] {category}: {title[:50]}...")
                     try:
-                        ai_result = process_post_with_ai(
-                            post.get('title', ''),
-                            post.get('text', ''),
-                            post.get('post_id', '')
-                        )
-                        post["category"] = ai_result.get("category", "General")
-                        if ai_result.get("location"):
-                            post["location"] = ai_result.get("location")
-                    except Exception:
-                        post["category"] = "General"
+                        send_email_notification([post], group_url)
+                        mark_as_notified([post["post_id"]])
+                        notified_count += 1
+                        with print_lock:
+                            print(f"[EMAIL] Sent!")
+                    except Exception as e:
+                        with print_lock:
+                            print(f"[EMAIL] Failed: {str(e)[:30]}")
+        
+        result["notified"] = notified_count
         
         # Save to database
         if posts:
@@ -545,31 +537,9 @@ def scrape_group_with_persistent_driver(driver, group_config: dict, group_idx: i
         with print_lock:
             print(f"[{group_idx}/{total_groups}] {group_name[:40]} - Found {result['scraped']} -> {len(posts)} new")
         
-        # Check for moving/transport jobs and send immediate emails
-        notified_count = 0
+        # Filter old posts first
         if posts:
-            for post in posts:
-                if not is_post_recent(post, MAX_POST_AGE_HOURS, log_skip=False):
-                    continue
-                
-                title = post.get('title', '')
-                text = post.get('text', '')
-                
-                if is_driving_job(title, text):
-                    post["category"] = "Transport / Moving"
-                    with print_lock:
-                        print(f"[EMAIL] TRANSPORT JOB detected - sending notification...")
-                    try:
-                        send_email_notification([post], group_url)
-                        mark_as_notified([post["post_id"]])
-                        notified_count += 1
-                        with print_lock:
-                            print(f"[EMAIL] Notification sent successfully")
-                    except Exception as e:
-                        with print_lock:
-                            print(f"[EMAIL] Failed to send: {str(e)[:50]}")
-        
-        result["notified"] = notified_count
+            posts = [p for p in posts if is_post_recent(p, MAX_POST_AGE_HOURS, log_skip=False)]
         
         # AI filtering for service requests
         offers_count = 0
@@ -583,25 +553,41 @@ def scrape_group_with_persistent_driver(driver, group_config: dict, group_idx: i
             result["skipped_offers"] = offers_count
             posts = filtered_posts
         
-        # Filter old posts
-        if posts:
-            posts = [p for p in posts if is_post_recent(p, MAX_POST_AGE_HOURS, log_skip=False)]
+        # Categorize with AI and send emails for relevant categories
+        EMAIL_CATEGORIES = ["Transport / Moving", "Manual Labor"]
+        notified_count = 0
         
-        # Categorize with AI
         if openai_ok and posts:
             for post in posts:
-                if not post.get("category"):
+                title = post.get('title', '')
+                text = post.get('text', '')
+                
+                # Categorize with AI
+                try:
+                    ai_result = process_post_with_ai(title, text, post.get('post_id', ''))
+                    category = ai_result.get("category", "General")
+                    post["category"] = category
+                    if ai_result.get("location"):
+                        post["location"] = ai_result.get("location")
+                except Exception:
+                    category = "General"
+                    post["category"] = category
+                
+                # Send email if category matches
+                if category in EMAIL_CATEGORIES:
+                    with print_lock:
+                        print(f"[EMAIL] {category}: {title[:50]}...")
                     try:
-                        ai_result = process_post_with_ai(
-                            post.get('title', ''),
-                            post.get('text', ''),
-                            post.get('post_id', '')
-                        )
-                        post["category"] = ai_result.get("category", "General")
-                        if ai_result.get("location"):
-                            post["location"] = ai_result.get("location")
-                    except Exception:
-                        post["category"] = "General"
+                        send_email_notification([post], group_url)
+                        mark_as_notified([post["post_id"]])
+                        notified_count += 1
+                        with print_lock:
+                            print(f"[EMAIL] Sent!")
+                    except Exception as e:
+                        with print_lock:
+                            print(f"[EMAIL] Failed: {str(e)[:30]}")
+        
+        result["notified"] = notified_count
         
         # Save to database
         if posts:
@@ -906,23 +892,11 @@ def run_scrape_cycle_multitab(driver, facebook_groups: list, openai_ok: bool, cy
                 print(f" (skip: {unknown_count} unknown, {existing_count} in DB)", end="")
             print(f" -> {len(posts)} new")
             
-            # Check for transport jobs and send immediate emails
-            if posts and openai_ok:
-                for post in posts:
-                    if not is_post_recent(post, MAX_POST_AGE_HOURS, log_skip=False):
-                        continue
-                    
-                    title = post.get('title', '')
-                    text = post.get('text', '')
-                    
-                    if is_driving_job(title, text):
-                        post["category"] = "Transport / Moving"
-                        print(f"    [EMAIL] TRANSPORT JOB! Sending notification...")
-                        send_email_notification([post], group_url)
-                        mark_as_notified([post["post_id"]])
-                        total_stats["notified"] += 1
+            # Filter old posts first
+            if posts:
+                posts = [p for p in posts if is_post_recent(p, MAX_POST_AGE_HOURS, log_skip=False)]
             
-            # AI filtering
+            # AI filtering for service requests
             if openai_ok and posts:
                 filtered_posts = []
                 for post in posts:
@@ -932,25 +906,35 @@ def run_scrape_cycle_multitab(driver, facebook_groups: list, openai_ok: bool, cy
                         total_stats["skipped_offers"] += 1
                 posts = filtered_posts
             
-            # Filter old posts
-            if posts:
-                posts = [p for p in posts if is_post_recent(p, MAX_POST_AGE_HOURS, log_skip=False)]
+            # Categorize with AI and send emails for relevant categories
+            EMAIL_CATEGORIES = ["Transport / Moving", "Manual Labor"]
             
-            # Categorize with AI
             if openai_ok and posts:
                 for post in posts:
-                    if not post.get("category"):
+                    title = post.get('title', '')
+                    text = post.get('text', '')
+                    
+                    # Categorize with AI
+                    try:
+                        ai_result = process_post_with_ai(title, text, post.get('post_id', ''))
+                        category = ai_result.get("category", "General")
+                        post["category"] = category
+                        if ai_result.get("location"):
+                            post["location"] = ai_result.get("location")
+                    except Exception:
+                        category = "General"
+                        post["category"] = category
+                    
+                    # Send email if category matches
+                    if category in EMAIL_CATEGORIES:
+                        print(f"    [EMAIL] {category}: {title[:50]}...")
                         try:
-                            ai_result = process_post_with_ai(
-                                post.get('title', ''),
-                                post.get('text', ''),
-                                post.get('post_id', '')
-                            )
-                            post["category"] = ai_result.get("category", "General")
-                            if ai_result.get("location"):
-                                post["location"] = ai_result.get("location")
-                        except Exception:
-                            post["category"] = "General"
+                            send_email_notification([post], group_url)
+                            mark_as_notified([post["post_id"]])
+                            total_stats["notified"] += 1
+                            print(f"    [EMAIL] Sent!")
+                        except Exception as e:
+                            print(f"    [EMAIL] Failed: {str(e)[:30]}")
             
             # Save to database
             if posts:
@@ -1086,81 +1070,54 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
             posts = filtered_posts
             print(f"kept {len(posts)} requests, removed {offers_count} offers")
         
-        # ==========================================================================
-        # STEP 2: Check for DRIVING and MANUAL LABOR jobs (email immediately)
-        # Only check posts that passed the offer filter
-        # ==========================================================================
-        if posts and openai_ok:
-            print(f"    Checking {len(posts)} posts for jobs...")
-            for post in posts:
-                # Only check recent posts
-                if not is_post_recent(post, MAX_POST_AGE_HOURS, log_skip=False):
-                    continue
-                
-                title = post.get('title', '')
-                text = post.get('text', '')
-                print(f"    [CHECK] {title[:45]}...", end=" ", flush=True)
-                
-                # Check for DRIVING job (primary category)
-                if is_driving_job(title, text):
-                    print(f"-> DRIVING JOB!")
-                    post["category"] = "Transport / Moving"
-                    print(f"    [EMAIL] Driving job: {title[:50]}...")
-                    try:
-                        send_email_notification([post], group_url)
-                        mark_as_notified([post["post_id"]])
-                        new_relevant_posts.append(post)
-                        print(f"    [EMAIL] Sent!")
-                    except Exception as e:
-                        print(f"    [EMAIL] Failed: {str(e)[:30]}")
-                
-                # Check for MANUAL LABOR job (secondary category)
-                elif is_manual_labor_job(title, text):
-                    print(f"-> MANUAL LABOR!")
-                    post["category"] = "Manual Labor"
-                    print(f"    [EMAIL] Manual labor: {title[:50]}...")
-                    try:
-                        send_email_notification([post], group_url)
-                        mark_as_notified([post["post_id"]])
-                        new_relevant_posts.append(post)
-                        print(f"    [EMAIL] Sent!")
-                    except Exception as e:
-                        print(f"    [EMAIL] Failed: {str(e)[:30]}")
-                else:
-                    print(f"-> Other job type")
-        # ==========================================================================
-        
-        # Filter out old posts BEFORE saving (don't save posts older than MAX_POST_AGE_HOURS)
+        # Filter out old posts BEFORE processing
         if posts:
-            recent_posts_to_save = []
+            recent_posts = []
             old_count = 0
             for post in posts:
                 if is_post_recent(post, MAX_POST_AGE_HOURS, log_skip=False):
-                    recent_posts_to_save.append(post)
+                    recent_posts.append(post)
                 else:
                     old_count += 1
             
             if old_count > 0:
                 print(f"    Filtered {old_count} posts older than {MAX_POST_AGE_HOURS}h")
-            posts = recent_posts_to_save
+            posts = recent_posts
         
-        # Categorize all posts with AI before saving (if not already categorized)
+        # ==========================================================================
+        # STEP 2: Categorize posts with AI and send emails for relevant categories
+        # Categories that trigger email: "Transport / Moving", "Manual Labor"
+        # ==========================================================================
+        EMAIL_CATEGORIES = ["Transport / Moving", "Manual Labor"]
+        
         if openai_ok and posts:
-            print(f"    Categorizing {len(posts)} posts...", end=" ", flush=True)
+            print(f"    Categorizing {len(posts)} posts...")
             for post in posts:
-                if not post.get("category"):  # Only if not already set (e.g., by is_driving_job)
+                title = post.get('title', '')
+                text = post.get('text', '')
+                
+                # Categorize with AI
+                try:
+                    ai_result = process_post_with_ai(title, text, post.get('post_id', ''))
+                    category = ai_result.get("category", "General")
+                    post["category"] = category
+                    if ai_result.get("location"):
+                        post["location"] = ai_result.get("location")
+                except Exception:
+                    category = "General"
+                    post["category"] = category
+                
+                # Send email if category matches
+                if category in EMAIL_CATEGORIES:
+                    print(f"    [EMAIL] {category}: {title[:50]}...")
                     try:
-                        ai_result = process_post_with_ai(
-                            post.get('title', ''),
-                            post.get('text', ''),
-                            post.get('post_id', '')
-                        )
-                        post["category"] = ai_result.get("category", "General")
-                        if ai_result.get("location"):
-                            post["location"] = ai_result.get("location")
-                    except Exception:
-                        post["category"] = "General"
-            print("done")
+                        send_email_notification([post], group_url)
+                        mark_as_notified([post["post_id"]])
+                        new_relevant_posts.append(post)
+                        print(f"    [EMAIL] Sent!")
+                    except Exception as e:
+                        print(f"    [EMAIL] Failed: {str(e)[:30]}")
+            print(f"    Categorization done")
         
         # Save filtered posts to database IMMEDIATELY
         saved_count = 0
