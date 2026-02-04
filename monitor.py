@@ -41,14 +41,15 @@ def create_driver(instance_id: int = 0):
     logging.getLogger('urllib3').setLevel(logging.WARNING)
     
     driver_path = Path(__file__).resolve().parent / "edgedriver" / "msedgedriver.exe"
+    # Single profile dir for this project (same idea as tinder_automation temp profile; we use edge_profile here)
     main_profile = Path(__file__).resolve().parent / "edge_profile"
     
     # Create main profile directory if it doesn't exist
     main_profile.mkdir(parents=True, exist_ok=True)
     
     if instance_id > 0:
-        # Parallel mode: use pre-copied profile (prepared by prepare_browser_profiles)
-        instance_dir = Path(__file__).resolve().parent / "edge_profiles" / f"instance_{instance_id}"
+        # Parallel mode: use numbered profile folder (edge_profile_1, edge_profile_2, etc.)
+        instance_dir = Path(__file__).resolve().parent / f"edge_profile_{instance_id}"
         
         # Create if not exists (fallback if pre-copy didn't run)
         if not instance_dir.exists():
@@ -60,7 +61,7 @@ def create_driver(instance_id: int = 0):
         
         user_data_dir = instance_dir
     else:
-        # Sequential mode: use the standard profile directly
+        # Sequential mode: use the main profile directly
         user_data_dir = main_profile
     
     options = Options()
@@ -100,7 +101,8 @@ def create_driver(instance_id: int = 0):
     
     try:
         driver = webdriver.Edge(service=service, options=options)
-        driver.set_page_load_timeout(60)  # Increased timeout for parallel mode
+        driver.set_page_load_timeout(120)  # 2 minute timeout for parallel mode
+        driver.set_script_timeout(120)
         return driver
     except Exception as e:
         print(f"[ERROR] Failed to start browser: {e}")

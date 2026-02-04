@@ -28,66 +28,64 @@ def close_scraper_edge_instances() -> None:
     """
     Close only Edge browser instances that are using THIS project's edge_profile folder.
     
-    ONLY closes instances where the command line contains EXACTLY:
-    - work_notifier\\edge_profile (or work_notifier/edge_profile)
+    Uses the same approach as tinder_automation: PowerShell + Get-CimInstance to find
+    Edge processes with matching --user-data-dir flag, then Stop-Process to close them.
     
-    Leaves ALL other Edge browser windows open:
-    - Personal browsing
-    - Other projects with their own edge_profile folders
-    - Any Edge not launched by this scraper
+    ONLY closes instances where --user-data-dir matches this project's edge_profile path.
+    Leaves ALL other Edge browser windows open (personal browsing, other projects).
     """
+    if sys.platform != "win32":
+        return
+    
     try:
+        import re
+        
         # Get the EXACT path to THIS project's edge_profile folder
         script_dir = Path(__file__).resolve().parent
+        user_data_dir = str(script_dir / "edge_profile")
         
-        # The exact profile path for THIS project (case-insensitive matching)
-        # We need to match the full path including "work_notifier\edge_profile"
-        exact_profile_path = str(script_dir / "edge_profile").lower()
+        # Escape for regex in PowerShell
+        udd_pat = re.escape(user_data_dir)
         
-        # Also create variants for different path separators
-        exact_profile_path_unix = exact_profile_path.replace("\\", "/")
-        exact_profile_path_win = exact_profile_path.replace("/", "\\")
+        # PowerShell script to find and kill Edge processes with matching --user-data-dir
+        # Same approach as tinder_automation's _force_close_edge_profile()
+        ps_script = rf"""
+$ErrorActionPreference = 'SilentlyContinue'
+$procs = Get-CimInstance Win32_Process -Filter "Name='msedge.exe'"
+$killed = 0
+foreach ($p in $procs) {{
+  $cmd = $p.CommandLine
+  if ([string]::IsNullOrWhiteSpace($cmd)) {{ continue }}
+  if ($cmd -match '--user-data-dir="?{udd_pat}"?') {{
+    try {{
+      Stop-Process -Id $p.ProcessId -Force
+      $killed++
+    }} catch {{ }}
+  }}
+}}
+Write-Output $killed
+"""
         
-        # Use WMIC to get Edge processes with their command lines
         result = subprocess.run(
-            ["wmic", "process", "where", "name='msedge.exe'", "get", "processid,commandline"],
+            ["powershell", "-NoProfile", "-Command", ps_script],
             capture_output=True,
             text=True,
-            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+            creationflags=subprocess.CREATE_NO_WINDOW
         )
         
-        killed_count = 0
-        if result.returncode == 0 and result.stdout:
-            lines = result.stdout.strip().split('\n')
-            for line in lines[1:]:  # Skip header
-                if not line.strip():
-                    continue
-                
-                line_lower = line.lower()
-                
-                # Check if this Edge instance uses EXACTLY our edge_profile folder
-                # The command line will contain something like: --user-data-dir="C:\...\work_notifier\edge_profile"
-                is_our_instance = (exact_profile_path_win in line_lower or 
-                                   exact_profile_path_unix in line_lower)
-                
-                if is_our_instance:
-                    # Extract PID (last number in the line)
-                    parts = line.split()
-                    if parts:
-                        pid = parts[-1]
-                        if pid.isdigit():
-                            subprocess.run(
-                                ["taskkill", "/F", "/PID", pid],
-                                capture_output=True,
-                                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-                            )
-                            killed_count += 1
+        # Parse killed count from output
+        killed_str = (result.stdout or "").strip().splitlines()[-1] if (result.stdout or "").strip() else "0"
+        try:
+            killed_count = int(killed_str)
+        except Exception:
+            killed_count = 0
         
-        # Kill msedgedriver.exe processes (these are only from automation)
+        # Also kill msedgedriver.exe processes (these are only from automation)
         subprocess.run(
-            ["taskkill", "/F", "/IM", "msedgedriver.exe"],
+            ["powershell", "-NoProfile", "-Command", 
+             "Get-Process msedgedriver -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"],
             capture_output=True,
-            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+            creationflags=subprocess.CREATE_NO_WINDOW
         )
         
         if killed_count > 0:
@@ -118,6 +116,9 @@ print_lock = threading.Lock()
 
 # Global persistent browser pool: {group_idx: driver}
 persistent_drivers = {}
+
+# Global reference to current sequential-mode driver (so cleanup can close it on exit/kill)
+_current_driver = None
 
 
 def is_post_recent(post: dict, max_hours: int = 24, log_skip: bool = True) -> bool:
@@ -180,10 +181,11 @@ def clear_database() -> int:
         return 0
 
 def signal_handler(signum, frame):
-    """Handle Ctrl+C gracefully."""
+    """Handle Ctrl+C and other signals: set flag and run cleanup so Edge closes."""
     global shutdown_requested
-    print("\n\n[!] Shutdown requested. Finishing current cycle...")
     shutdown_requested = True
+    print("\n\n[!] Shutdown requested. Closing browser...")
+    cleanup_on_exit()
 
 
 def check_openai_api_key() -> bool:
@@ -1174,13 +1176,39 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
     }
 
 
+# Global reference to Windows console handler (must not be garbage collected)
+_WINDOWS_CONSOLE_HANDLER = None
+
+
+def _windows_console_handler(ctrl_type: int) -> bool:
+    """Windows console control handler: run cleanup when user closes terminal window."""
+    # CTRL_C_EVENT=0, CTRL_CLOSE_EVENT=2, CTRL_BREAK_EVENT=1, CTRL_LOGOFF_EVENT=5, CTRL_SHUTDOWN_EVENT=6
+    if ctrl_type in (0, 1, 2, 5, 6):
+        cleanup_on_exit()
+    return False  # Let default handler run (process will exit)
+
+
 def main() -> int:
     """Main function to run the Facebook work notifier in continuous loop."""
     global shutdown_requested
     
-    # Set up signal handler for graceful shutdown
+    # Set up signal handler for graceful shutdown (Ctrl+C, etc.)
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
+    
+    # On Windows: also run cleanup when user closes the terminal window
+    # Same approach as tinder_automation for handling terminal close
+    if sys.platform == "win32":
+        try:
+            global _WINDOWS_CONSOLE_HANDLER
+            import ctypes
+            kernel32 = ctypes.windll.kernel32  # type: ignore
+            # Handler must have signature: BOOL WINAPI HandlerRoutine(DWORD dwCtrlType)
+            # Store in global to prevent garbage collection (required for callback to work)
+            _WINDOWS_CONSOLE_HANDLER = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_uint)(_windows_console_handler)
+            kernel32.SetConsoleCtrlHandler(_WINDOWS_CONSOLE_HANDLER, True)
+        except Exception:
+            pass
     
     # Close any existing scraper Edge instances to prevent profile lock conflicts
     close_scraper_edge_instances()
@@ -1227,6 +1255,7 @@ def main() -> int:
     use_parallel = PARALLEL_MODE
     use_persistent = PERSISTENT_BROWSERS and use_parallel
     
+    global _current_driver
     driver = None
     if use_persistent:
         # Create persistent browsers for all groups (stay open between cycles)
@@ -1237,6 +1266,7 @@ def main() -> int:
     else:
         print("\n[*] Starting browser (sequential mode)...")
         driver = create_driver()
+        _current_driver = driver  # So cleanup_on_exit can close it when terminal is killed
     
     cycle_num = 0
     total_stats = {
@@ -1266,9 +1296,11 @@ def main() -> int:
                     print("[*] Restarting browser...")
                     try:
                         driver.quit()
-                    except:
+                    except Exception:
                         pass
+                    _current_driver = None
                     driver = create_driver()
+                    _current_driver = driver
                     print("[OK] Browser restarted, continuing...")
                     continue
             
@@ -1307,24 +1339,33 @@ def main() -> int:
         print(f"\n[OK] Graceful shutdown complete.")
 
     finally:
-        # Close persistent browsers if used
-        if persistent_drivers:
-            close_persistent_browsers()
-        # Close sequential mode driver if used
-        if driver:
-            print("\n[*] Closing browser...")
-            driver.quit()
-        # Final cleanup: kill any remaining scraper Edge instances
-        close_scraper_edge_instances()
+        # Close browser and scraper Edge instances (idempotent; may already be done by signal/handler)
+        if driver is not None:
+            try:
+                print("\n[*] Closing browser...")
+                driver.quit()
+            except Exception:
+                pass
+        _current_driver = None
+        cleanup_on_exit()
 
     return 0
 
 
 def cleanup_on_exit():
-    """Cleanup function called on script exit."""
-    global persistent_drivers
+    """Cleanup function called on script exit, Ctrl+C, or terminal close. Closes Edge."""
+    global persistent_drivers, _current_driver
+    # Close sequential-mode browser if open
+    if _current_driver is not None:
+        try:
+            _current_driver.quit()
+        except Exception:
+            pass
+        _current_driver = None
+    # Close persistent browsers if used
     if persistent_drivers:
         close_persistent_browsers()
+    # Kill any remaining scraper Edge instances (profile-specific)
     close_scraper_edge_instances()
 
 
