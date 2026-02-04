@@ -139,12 +139,44 @@ def click_see_more(driver: WebDriver, parent_element) -> bool:
     return False
 
 
-def sort_by_new_posts(driver: WebDriver) -> bool:
+def is_error_page(driver: WebDriver) -> bool:
+    """
+    Check if Facebook is showing an error page like 'This page isn't available'.
+    """
+    try:
+        page_source = driver.page_source.lower()
+        error_phrases = [
+            "this page isn't available",
+            "this page isn't available",
+            "denne siden er ikke tilgjengelig",
+            "technical error",
+            "try reloading this page"
+        ]
+        return any(phrase in page_source for phrase in error_phrases)
+    except:
+        return False
+
+
+def sort_by_new_posts(driver: WebDriver, retry_count: int = 0) -> bool:
     """
     Sort the Facebook group feed by 'New posts' instead of 'Most relevant'.
     Returns True if successfully sorted, False otherwise.
+    Will reload page and retry if Facebook shows an error page.
     """
+    MAX_RETRIES = 2
+    
     try:
+        # Check if we're on an error page first
+        if is_error_page(driver):
+            if retry_count < MAX_RETRIES:
+                print("    [SORT] Error page detected, reloading...")
+                driver.refresh()
+                time.sleep(2)  # Wait for page to reload
+                return sort_by_new_posts(driver, retry_count + 1)
+            else:
+                print("    [SORT] Error page persists after retries")
+                return False
+        
         # Facebook has a sort dropdown that shows "Most relevant" by default
         # We need to click it and select "New posts"
         
@@ -255,7 +287,18 @@ def sort_by_new_posts(driver: WebDriver) -> bool:
         print("    [SORT] Sorted by 'New posts'")
         
         # Brief wait for page to refresh with new sorting
-        time.sleep(0.3)
+        time.sleep(0.5)
+        
+        # Check if error page appeared after clicking
+        if is_error_page(driver):
+            if retry_count < MAX_RETRIES:
+                print("    [SORT] Error page after sort click, reloading...")
+                driver.refresh()
+                time.sleep(2)
+                return sort_by_new_posts(driver, retry_count + 1)
+            else:
+                print("    [SORT] Error page persists after retries")
+                return False
         
         return True
         
