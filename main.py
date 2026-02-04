@@ -26,27 +26,27 @@ from config.settings import load_facebook_groups, KEYWORDS
 
 def close_scraper_edge_instances() -> None:
     """
-    Close only Edge browser instances that are using THIS project's profile folders.
-    Matches ONLY profiles in the work_notifier directory:
-    - edge_profile/
-    - edge_profile_1/, edge_profile_2/, etc.
-    - edge_profiles/instance_1/, etc.
+    Close only Edge browser instances that are using THIS project's edge_profile folder.
     
-    Leaves ALL other Edge browser windows open (personal browsing, other projects).
+    ONLY closes instances where the command line contains EXACTLY:
+    - work_notifier\\edge_profile (or work_notifier/edge_profile)
+    
+    Leaves ALL other Edge browser windows open:
+    - Personal browsing
+    - Other projects with their own edge_profile folders
+    - Any Edge not launched by this scraper
     """
     try:
-        # Get the EXACT project directory path
+        # Get the EXACT path to THIS project's edge_profile folder
         script_dir = Path(__file__).resolve().parent
-        project_path = str(script_dir).lower()
         
-        # Profile patterns specific to THIS project only
-        # Must contain the work_notifier project path AND a profile folder
-        profile_patterns = [
-            (project_path + "\\edge_profile").replace("/", "\\"),  # edge_profile, edge_profile_1, etc.
-            (project_path + "/edge_profile").replace("\\", "/"),   # Unix-style path
-            (project_path + "\\edge_profiles").replace("/", "\\"), # edge_profiles folder
-            (project_path + "/edge_profiles").replace("\\", "/"),  # Unix-style
-        ]
+        # The exact profile path for THIS project (case-insensitive matching)
+        # We need to match the full path including "work_notifier\edge_profile"
+        exact_profile_path = str(script_dir / "edge_profile").lower()
+        
+        # Also create variants for different path separators
+        exact_profile_path_unix = exact_profile_path.replace("\\", "/")
+        exact_profile_path_win = exact_profile_path.replace("/", "\\")
         
         # Use WMIC to get Edge processes with their command lines
         result = subprocess.run(
@@ -65,8 +65,10 @@ def close_scraper_edge_instances() -> None:
                 
                 line_lower = line.lower()
                 
-                # Check if this Edge instance uses any of our profile paths
-                is_our_instance = any(pattern in line_lower for pattern in profile_patterns)
+                # Check if this Edge instance uses EXACTLY our edge_profile folder
+                # The command line will contain something like: --user-data-dir="C:\...\work_notifier\edge_profile"
+                is_our_instance = (exact_profile_path_win in line_lower or 
+                                   exact_profile_path_unix in line_lower)
                 
                 if is_our_instance:
                     # Extract PID (last number in the line)
