@@ -1103,9 +1103,13 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
                     post["category"] = category
                     if ai_result.get("location"):
                         post["location"] = ai_result.get("location")
-                except Exception:
+                except Exception as e:
+                    print(f"    [AI ERROR] {str(e)[:50]}")
                     category = "General"
                     post["category"] = category
+                
+                # Debug: print category for each post
+                print(f"    -> {title[:40]}... = [{category}]")
                 
                 # Send email if category matches
                 if category in EMAIL_CATEGORIES:
