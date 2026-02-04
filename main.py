@@ -23,6 +23,27 @@ from src.notifications import send_email_notification
 from src.ai.ai_processor import is_service_request, process_post_with_ai
 from config.settings import load_facebook_groups, KEYWORDS
 
+# Categories that trigger email notifications
+EMAIL_CATEGORIES = ["Transport / Moving", "Manual Labor"]
+
+
+def get_category_with_fallback(title: str, text: str, ai_category: str) -> str:
+    """
+    If AI returns General, use keyword matching as fallback.
+    This matches the same logic in api/posts.ts for consistent categorization.
+    """
+    import re
+    if ai_category and ai_category != "General":
+        return ai_category
+    
+    # Keyword-based fallback (matches api/posts.ts logic)
+    content = (title + ' ' + text).lower()
+    if re.search(r'(flytte|flytting|transport|frakte|hente.*fra|levere.*til|varebil|flyttebil)', content):
+        return "Transport / Moving"
+    if re.search(r'(løfte|tungt|bære tungt|laste|losse|rive|fjerne|rydde|grave|fysisk)', content):
+        return "Manual Labor"
+    return ai_category
+
 
 def _force_close_edge_profile(user_data_dir: str, profile_directory: str = "Default") -> int:
     """
@@ -336,7 +357,6 @@ def scrape_single_group(group_config: dict, group_idx: int, total_groups: int, o
             posts = filtered_posts
         
         # Categorize with AI and send emails for relevant categories
-        EMAIL_CATEGORIES = ["Transport / Moving", "Manual Labor"]
         notified_count = 0
         
         if openai_ok and posts:
@@ -347,13 +367,15 @@ def scrape_single_group(group_config: dict, group_idx: int, total_groups: int, o
                 # Categorize with AI
                 try:
                     ai_result = process_post_with_ai(title, text, post.get('post_id', ''))
-                    category = ai_result.get("category", "General")
-                    post["category"] = category
+                    ai_category = ai_result.get("category", "General")
                     if ai_result.get("location"):
                         post["location"] = ai_result.get("location")
                 except Exception:
-                    category = "General"
-                    post["category"] = category
+                    ai_category = "General"
+                
+                # Apply keyword fallback if AI returned General
+                category = get_category_with_fallback(title, text, ai_category)
+                post["category"] = category
                 
                 # Send email if category matches
                 if category in EMAIL_CATEGORIES:
@@ -554,7 +576,6 @@ def scrape_group_with_persistent_driver(driver, group_config: dict, group_idx: i
             posts = filtered_posts
         
         # Categorize with AI and send emails for relevant categories
-        EMAIL_CATEGORIES = ["Transport / Moving", "Manual Labor"]
         notified_count = 0
         
         if openai_ok and posts:
@@ -565,13 +586,15 @@ def scrape_group_with_persistent_driver(driver, group_config: dict, group_idx: i
                 # Categorize with AI
                 try:
                     ai_result = process_post_with_ai(title, text, post.get('post_id', ''))
-                    category = ai_result.get("category", "General")
-                    post["category"] = category
+                    ai_category = ai_result.get("category", "General")
                     if ai_result.get("location"):
                         post["location"] = ai_result.get("location")
                 except Exception:
-                    category = "General"
-                    post["category"] = category
+                    ai_category = "General"
+                
+                # Apply keyword fallback if AI returned General
+                category = get_category_with_fallback(title, text, ai_category)
+                post["category"] = category
                 
                 # Send email if category matches
                 if category in EMAIL_CATEGORIES:
@@ -907,8 +930,6 @@ def run_scrape_cycle_multitab(driver, facebook_groups: list, openai_ok: bool, cy
                 posts = filtered_posts
             
             # Categorize with AI and send emails for relevant categories
-            EMAIL_CATEGORIES = ["Transport / Moving", "Manual Labor"]
-            
             if openai_ok and posts:
                 for post in posts:
                     title = post.get('title', '')
@@ -917,13 +938,15 @@ def run_scrape_cycle_multitab(driver, facebook_groups: list, openai_ok: bool, cy
                     # Categorize with AI
                     try:
                         ai_result = process_post_with_ai(title, text, post.get('post_id', ''))
-                        category = ai_result.get("category", "General")
-                        post["category"] = category
+                        ai_category = ai_result.get("category", "General")
                         if ai_result.get("location"):
                             post["location"] = ai_result.get("location")
                     except Exception:
-                        category = "General"
-                        post["category"] = category
+                        ai_category = "General"
+                    
+                    # Apply keyword fallback if AI returned General
+                    category = get_category_with_fallback(title, text, ai_category)
+                    post["category"] = category
                     
                     # Send email if category matches
                     if category in EMAIL_CATEGORIES:
@@ -1088,8 +1111,6 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
         # STEP 2: Categorize posts with AI and send emails for relevant categories
         # Categories that trigger email: "Transport / Moving", "Manual Labor"
         # ==========================================================================
-        EMAIL_CATEGORIES = ["Transport / Moving", "Manual Labor"]
-        
         if openai_ok and posts:
             print(f"    Categorizing {len(posts)} posts...")
             for post in posts:
@@ -1099,17 +1120,22 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
                 # Categorize with AI
                 try:
                     ai_result = process_post_with_ai(title, text, post.get('post_id', ''))
-                    category = ai_result.get("category", "General")
-                    post["category"] = category
+                    ai_category = ai_result.get("category", "General")
                     if ai_result.get("location"):
                         post["location"] = ai_result.get("location")
                 except Exception as e:
                     print(f"    [AI ERROR] {str(e)[:50]}")
-                    category = "General"
-                    post["category"] = category
+                    ai_category = "General"
+                
+                # Apply keyword fallback if AI returned General
+                category = get_category_with_fallback(title, text, ai_category)
+                post["category"] = category
                 
                 # Debug: print category for each post
-                print(f"    -> {title[:40]}... = [{category}]")
+                if ai_category != category:
+                    print(f"    -> {title[:40]}... = [{category}] (AI: {ai_category})")
+                else:
+                    print(f"    -> {title[:40]}... = [{category}]")
                 
                 # Send email if category matches
                 if category in EMAIL_CATEGORIES:
