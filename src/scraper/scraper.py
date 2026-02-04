@@ -257,8 +257,9 @@ def sort_by_new_posts(driver: WebDriver, group_url: str = None, retry_count: int
         
         # Click the sort button to open dropdown
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", sort_button)
+        time.sleep(0.5)  # Wait before clicking
         driver.execute_script("arguments[0].click();", sort_button)
-        time.sleep(0.15)  # Brief wait for dropdown
+        time.sleep(1.0)  # Wait for dropdown to fully appear
         
         # Now find and click "New posts" option
         new_posts_texts = ["new posts", "nye innlegg", "nyeste innlegg", "newest", "new"]
@@ -297,8 +298,8 @@ def sort_by_new_posts(driver: WebDriver, group_url: str = None, retry_count: int
         driver.execute_script("arguments[0].click();", new_posts_option)
         print("    [SORT] Sorted by 'New posts'")
         
-        # Wait for page to refresh with new sorting
-        time.sleep(1.0)
+        # Wait for page to refresh with new sorting - longer delay to avoid error page
+        time.sleep(3.0)
         
         # Check if error page appeared after clicking
         if is_error_page(driver):
