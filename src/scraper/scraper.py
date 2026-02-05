@@ -168,7 +168,7 @@ def click_reload_button(driver: WebDriver) -> bool:
             reload_btn = driver.find_element(By.CSS_SELECTOR, "div[aria-label='Reload page'][role='button']")
             driver.execute_script("arguments[0].click();", reload_btn)
             print("    [SORT] Clicked 'Reload page' button")
-            time.sleep(4)  # Wait for page to reload
+            time.sleep(1.5)  # Wait for page to reload
             return True
         except:
             pass
@@ -178,7 +178,7 @@ def click_reload_button(driver: WebDriver) -> bool:
             reload_btn = driver.find_element(By.CSS_SELECTOR, "div[aria-label='Last inn siden på nytt'][role='button']")
             driver.execute_script("arguments[0].click();", reload_btn)
             print("    [SORT] Clicked 'Reload page' button (Norwegian)")
-            time.sleep(4)
+            time.sleep(1.5)
             return True
         except:
             pass
@@ -190,7 +190,7 @@ def click_reload_button(driver: WebDriver) -> bool:
                 if "reload page" in btn.text.lower() or "last inn siden" in btn.text.lower():
                     driver.execute_script("arguments[0].click();", btn)
                     print("    [SORT] Clicked 'Reload page' button (by text)")
-                    time.sleep(4)
+                    time.sleep(1.5)
                     return True
             except:
                 continue
@@ -207,7 +207,7 @@ def click_reload_button(driver: WebDriver) -> bool:
                         if parent.get_attribute("role") == "button":
                             driver.execute_script("arguments[0].click();", parent)
                             print("    [SORT] Clicked 'Reload page' button (via span)")
-                            time.sleep(4)
+                            time.sleep(1.5)
                             return True
             except:
                 continue
@@ -239,14 +239,14 @@ def sort_by_new_posts(driver: WebDriver, group_url: str = None, retry_count: int
                         driver.get(group_url)
                     else:
                         driver.refresh()
-                    time.sleep(3)
+                    time.sleep(1.5)
                 
                 # Wait for feed to load
                 try:
-                    WebDriverWait(driver, 30).until(
+                    WebDriverWait(driver, 10).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, "[role='feed']"))
                     )
-                    time.sleep(2)  # Extra wait for content to load
+                    time.sleep(0.5)  # Brief wait for content to load
                 except:
                     pass
                 return sort_by_new_posts(driver, group_url, retry_count + 1)
@@ -323,9 +323,9 @@ def sort_by_new_posts(driver: WebDriver, group_url: str = None, retry_count: int
         
         # Click the sort button to open dropdown
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", sort_button)
-        time.sleep(0.5)  # Wait before clicking
+        time.sleep(0.3)  # Wait before clicking
         driver.execute_script("arguments[0].click();", sort_button)
-        time.sleep(1.0)  # Wait for dropdown to fully appear
+        time.sleep(0.5)  # Wait for dropdown to appear
         
         # Now find and click "New posts" option
         new_posts_texts = ["new posts", "nye innlegg", "nyeste innlegg", "newest", "new"]
@@ -364,8 +364,8 @@ def sort_by_new_posts(driver: WebDriver, group_url: str = None, retry_count: int
         driver.execute_script("arguments[0].click();", new_posts_option)
         print("    [SORT] Sorted by 'New posts'")
         
-        # Wait for page to refresh with new sorting - longer delay to avoid error page
-        time.sleep(3.0)
+        # Wait for page to refresh with new sorting
+        time.sleep(1.5)
         
         # Check if error page appeared after clicking
         if is_error_page(driver):
@@ -379,14 +379,14 @@ def sort_by_new_posts(driver: WebDriver, group_url: str = None, retry_count: int
                         driver.get(group_url)
                     else:
                         driver.refresh()
-                    time.sleep(3)
+                    time.sleep(1.5)
                 
                 # Wait for feed to load
                 try:
-                    WebDriverWait(driver, 30).until(
+                    WebDriverWait(driver, 10).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, "[role='feed']"))
                     )
-                    time.sleep(2)  # Extra wait for content to load
+                    time.sleep(0.5)  # Brief wait for content to load
                 except:
                     pass
                 return sort_by_new_posts(driver, group_url, retry_count + 1)
@@ -669,7 +669,7 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         
         # Brief pause after scrolling for content to load
-        time.sleep(0.4)
+        time.sleep(0.3)
 
     # Final collection after scrolling
     # Expand all "See more" buttons before final collection

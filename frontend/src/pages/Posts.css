@@ -248,11 +248,17 @@ body {
   gap: 0.5rem;
   height: 100%;
   min-height: 250px;
+  text-decoration: none;
+  color: inherit;
   border: 2px solid transparent;
 }
 
 .post-card.clickable {
   cursor: pointer;
+}
+
+.post-card.clickable:visited {
+  color: inherit;
 }
 
 .post-card.clickable:hover {

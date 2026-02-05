@@ -1,12 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { api, Post, Stats } from '../api/client';
 import './Posts.css';
 
 const PAGE_SIZE = 20;
 
 export function PostsPage() {
-  const navigate = useNavigate();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -399,10 +397,12 @@ export function PostsPage() {
         <>
           <div className="posts-grid">
             {posts.map((post) => (
-              <div 
+              <a 
                 key={post.post_id} 
+                href={`/post/${encodeURIComponent(post.post_id)}`}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="post-card clickable"
-                onClick={() => navigate(`/post/${encodeURIComponent(post.post_id)}`)}
               >
                 {/* Posted Date - Most Important */}
                 <div className="post-date">
@@ -460,7 +460,7 @@ export function PostsPage() {
                 <div className="view-details-hint">
                   Click to view details →
                 </div>
-              </div>
+              </a>
             ))}
           </div>
           
