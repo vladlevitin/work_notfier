@@ -42,9 +42,56 @@ def is_service_request(title: str, text: str) -> bool:
     Returns True if it's a request for service (we want to keep these).
     Returns False if it's an offer/advertisement (we want to filter these out).
     """
+    content = f"{title}\n{text}"
+    content_lower = content.lower()
+    
+    # Quick keyword-based pre-filter for obvious service OFFERS
+    # These patterns clearly indicate someone is OFFERING services, not requesting
+    offer_patterns = [
+        "vi tilbyr",           # We offer
+        "jeg tilbyr",          # I offer
+        "tilbyr mine tjenester",  # Offer my services
+        "tilbyr hjelp",        # Offer help
+        "tilbyr flyttehjelp",  # Offer moving help
+        "tilbyr tjenester",    # Offer services
+        "utfører alle typer",  # Perform all types
+        "utfører oppdrag",     # Perform jobs
+        "vi utfører",          # We perform
+        "jeg utfører",         # I perform
+        "ledig kapasitet",     # Available capacity
+        "har ledig tid",       # Have available time
+        "ta kontakt for",      # Contact for
+        "kontakt meg for",     # Contact me for
+        "send pm for",         # Send PM for
+        "send melding for",    # Send message for
+        "rimelige priser",     # Reasonable prices
+        "konkurransedyktige priser",  # Competitive prices
+        "gode priser",         # Good prices
+        "erfaren håndverker",  # Experienced handyman
+        "erfaren snekker",     # Experienced carpenter
+        "erfaren elektriker",  # Experienced electrician
+        "erfaren maler",       # Experienced painter
+        "vi kan hjelpe",       # We can help
+        "jeg kan hjelpe",      # I can help
+        "effektive og hyggelige",  # Efficient and friendly (common ad phrase)
+        "hyggelige karer",     # Friendly guys (common ad phrase)
+        "ønsker kun seriøse",  # Only want serious (inquiries)
+        "kun seriøse henvendelser",  # Only serious inquiries
+        "vi er et firma",      # We are a company
+        "vårt firma",          # Our company
+        "min bedrift",         # My business
+        "stiller med",         # Come with (equipment/van)
+        "stor kassebil",       # Large box van (advertising their equipment)
+        "egen bil",            # Own car (advertising their equipment)
+    ]
+    
+    for pattern in offer_patterns:
+        if pattern in content_lower:
+            print(f"    [FILTER] Rejected as OFFER (keyword: '{pattern}')")
+            return False
+    
+    # If no obvious offer keywords, use OpenAI for nuanced classification
     try:
-        content = f"{title}\n{text}"
-        
         response = client.chat.completions.create(
             model="gpt-5.2-chat-latest",
             messages=[
