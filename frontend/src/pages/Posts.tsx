@@ -89,10 +89,28 @@ export function PostsPage() {
     }
   }, [offset, groupFilter, searchFilter, showOnlyNew, categoryFilter, locationFilter]);
 
+  // Normalize group name: strip "(1) ", "(2) " etc. prefixes
+  const normalizeGroupName = (name: string): string => {
+    return name.replace(/^\(\d+\)\s*/, '');
+  };
+
   // Load stats
   const loadStats = useCallback(async () => {
     try {
       const statsData = await api.getStats();
+      
+      // Merge groups with same normalized name
+      if (statsData.by_group) {
+        const merged: Record<string, number> = {};
+        for (const g of statsData.by_group) {
+          const normalized = normalizeGroupName(g.group);
+          merged[normalized] = (merged[normalized] || 0) + g.count;
+        }
+        statsData.by_group = Object.entries(merged)
+          .map(([group, count]) => ({ group, count }))
+          .sort((a, b) => b.count - a.count);
+      }
+      
       setStats(statsData);
     } catch (err) {
       console.error('Failed to load stats:', err);
@@ -449,7 +467,7 @@ export function PostsPage() {
                   </div>
                   <div className="post-meta-item">
                     <span className="meta-label">📍 Group:</span>
-                    <span className="group-link">{post.group_name}</span>
+                    <span className="group-link">{normalizeGroupName(post.group_name)}</span>
                   </div>
                 </div>
                 

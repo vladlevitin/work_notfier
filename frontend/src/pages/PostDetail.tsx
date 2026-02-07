@@ -171,7 +171,7 @@ export function PostDetailPage() {
                 rel="noopener noreferrer"
                 className="meta-link"
               >
-                {post.group_name}
+                {post.group_name.replace(/^\(\d+\)\s*/, '')}
               </a>
             </div>
             
