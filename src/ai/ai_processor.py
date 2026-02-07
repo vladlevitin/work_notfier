@@ -100,6 +100,22 @@ def is_service_request(title: str, text: str) -> bool:
         "vi kan bygge",        # We can build
         "vi kan montere",      # We can install/assemble
         "dersom det er ønskelig",  # If desired (offering optional services)
+        "trenger du hjelp",    # Do you need help? (asking if YOU need = offering)
+        "trenger du noen",     # Do you need someone? (offering)
+        "trenger du flyttehjelp",  # Do you need moving help? (offering)
+        "fikser vi",           # We fix (advertising services)
+        "ordner vi",           # We arrange/fix (advertising services)
+        "beste prisene",       # Best prices
+        "de beste prisene",    # The best prices
+        "billigste prisene",   # Cheapest prices
+        "send pm om",          # Send PM if (offering services)
+        "send melding om",     # Send message if (offering services)
+        "om du trenger",       # If you need (offering services)
+        "hvis du trenger",     # If you need (offering services)
+        "vi har de beste",     # We have the best
+        "vi fikser",           # We fix
+        "vi ordner",           # We arrange
+        "alt fra",             # Everything from (listing multiple services)
     ]
     
     for pattern in offer_patterns:
@@ -119,11 +135,13 @@ OFFER (return "OFFER") - Someone is ADVERTISING/OFFERING their services:
 - "Utfører..." / "Vi utfører..."  
 - "Jeg kan hjelpe med..." / "Jeg kan..." / "Jeg kan også..."
 - Posts that LIST MULTIPLE SERVICES they can provide (like a menu of services)
-- "TRENGER DU HJELP?" followed by listing what THEY can do = OFFER
+- "TRENGER DU HJELP?" / "Trenger du hjelp med...?" = OFFER (asking if YOU need help = advertising!)
 - "Har du en [thing] som trenger [service]?" = OFFER (asking if YOU need their service)
+- "Trenger du [service]? Vi/Jeg kan..." = OFFER (question directed at reader + what they offer)
+- "Send PM om du trenger hjelp" = OFFER (inviting customers to contact them)
 - "Ledig kapasitet..." / "Vi har ledig tid..."
 - "Ta kontakt for tilbud..." / "Send meg PM" / "Ta kontakt så..."
-- "Rimelige priser..." / "Gode priser..."
+- "Rimelige priser..." / "Gode priser..." / "Beste prisene..."
 - "Erfaren [profession] tilbyr..."
 - Someone describing their experience, qualifications, or certifications (e.g. "fagbrev", "års erfaring")
 - "Ønsker kun seriøse henvendelser" (only serious inquiries)
@@ -132,6 +150,8 @@ OFFER (return "OFFER") - Someone is ADVERTISING/OFFERING their services:
 - "Flyttebyrå trenger..." (company looking for workers)
 - Someone saying what THEY can do for YOU (building, fixing, repairing, installing)
 - "Dersom det er ønskelig" (if desired) - offering optional extras
+- "Vi fikser..." / "Vi ordner..." / "...fikser vi" = OFFER (we fix/arrange)
+- "Alt fra [X] til [Y]" = OFFER (listing range of services)
 
 REQUEST (return "REQUEST") - Someone NEEDS a specific job done:
 - "Trenger hjelp med..." / "Trenger noen som kan..."
@@ -144,10 +164,14 @@ REQUEST (return "REQUEST") - Someone NEEDS a specific job done:
 
 CRITICAL RULES:
 1. If someone lists MULTIPLE services they offer, it's an OFFER, not a request.
-2. If someone says "Jeg kan..." (I can...) they are OFFERING, not requesting.
+2. If someone says "Jeg kan..." (I can...) or "Vi fikser..." (We fix...) they are OFFERING, not requesting.
 3. If someone mentions their qualifications (fagbrev, erfaring, sertifikat) they are OFFERING.
-4. If the post is structured as "Do you need X? I can do X" it's an OFFER.
-5. When in doubt, lean towards OFFER - we only want genuine requests for help.
+4. If the post is structured as "Do you need X? I/We can do X" it's an OFFER.
+5. "Trenger du hjelp med...?" (Do YOU need help with...?) is an OFFER - they're advertising to potential customers!
+   This is different from "Trenger hjelp med..." (Need help with...) which is a REQUEST.
+6. If someone mentions prices ("beste prisene", "gode priser") they are OFFERING.
+7. "Send PM om du trenger..." (Send PM if you need...) is an OFFER.
+8. When in doubt, lean towards OFFER - we only want genuine requests for help.
 
 Respond with ONLY one word: REQUEST or OFFER"""},
                 {"role": "user", "content": content}
