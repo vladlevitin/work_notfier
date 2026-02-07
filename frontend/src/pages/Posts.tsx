@@ -240,7 +240,7 @@ export function PostsPage() {
       'Electrical': '⚡',
       'Plumbing': '🔧',
       'Transport / Moving': '🚚',
-      'Manual Labor': '💪',
+      'Manual Labor': '🏗️',
       'Painting / Renovation': '🎨',
       'Cleaning / Garden': '🧹',
       'Assembly / Furniture': '🪑',
