@@ -73,6 +73,7 @@ def is_service_request(title: str, text: str) -> bool:
         "erfaren maler",       # Experienced painter
         "vi kan hjelpe",       # We can help
         "jeg kan hjelpe",      # I can help
+        "jeg kan også",        # I can also (offering additional services)
         "effektive og hyggelige",  # Efficient and friendly (common ad phrase)
         "hyggelige karer",     # Friendly guys (common ad phrase)
         "ønsker kun seriøse",  # Only want serious (inquiries)
@@ -83,6 +84,22 @@ def is_service_request(title: str, text: str) -> bool:
         "stiller med",         # Come with (equipment/van)
         "stor kassebil",       # Large box van (advertising their equipment)
         "egen bil",            # Own car (advertising their equipment)
+        "har fagbrev",         # Has trade certificate (advertising qualifications)
+        "års erfaring",        # Years of experience (advertising qualifications)
+        "lang erfaring",       # Long experience
+        "ta kontakt så",       # Contact us and we'll... (offering services)
+        "jeg kan bygge",       # I can build
+        "jeg kan fikse",       # I can fix
+        "jeg kan reparere",    # I can repair
+        "jeg kan montere",     # I can install/assemble
+        "jeg kan male",        # I can paint
+        "jeg kan pusse",       # I can renovate
+        "jeg kan gjøre",       # I can do
+        "vi kan gjøre",        # We can do
+        "vi kan fikse",        # We can fix
+        "vi kan bygge",        # We can build
+        "vi kan montere",      # We can install/assemble
+        "dersom det er ønskelig",  # If desired (offering optional services)
     ]
     
     for pattern in offer_patterns:
@@ -100,18 +117,21 @@ def is_service_request(title: str, text: str) -> bool:
 OFFER (return "OFFER") - Someone is ADVERTISING/OFFERING their services:
 - "Tilbyr..." / "Vi tilbyr..." / "Jeg tilbyr..."
 - "Utfører..." / "Vi utfører..."  
-- "Jeg kan hjelpe med..." / "Jeg kan..."
+- "Jeg kan hjelpe med..." / "Jeg kan..." / "Jeg kan også..."
 - Posts that LIST MULTIPLE SERVICES they can provide (like a menu of services)
 - "TRENGER DU HJELP?" followed by listing what THEY can do = OFFER
+- "Har du en [thing] som trenger [service]?" = OFFER (asking if YOU need their service)
 - "Ledig kapasitet..." / "Vi har ledig tid..."
-- "Ta kontakt for tilbud..." / "Send meg PM"
+- "Ta kontakt for tilbud..." / "Send meg PM" / "Ta kontakt så..."
 - "Rimelige priser..." / "Gode priser..."
 - "Erfaren [profession] tilbyr..."
-- Someone describing their experience/qualifications
+- Someone describing their experience, qualifications, or certifications (e.g. "fagbrev", "års erfaring")
 - "Ønsker kun seriøse henvendelser" (only serious inquiries)
 - Company/business/professional advertising services
 - Looking to HIRE workers for their business
 - "Flyttebyrå trenger..." (company looking for workers)
+- Someone saying what THEY can do for YOU (building, fixing, repairing, installing)
+- "Dersom det er ønskelig" (if desired) - offering optional extras
 
 REQUEST (return "REQUEST") - Someone NEEDS a specific job done:
 - "Trenger hjelp med..." / "Trenger noen som kan..."
@@ -122,8 +142,12 @@ REQUEST (return "REQUEST") - Someone NEEDS a specific job done:
 - Individual person needing ONE specific job done
 - Asking for help with a concrete, specific task
 
-CRITICAL: If someone lists MULTIPLE services they offer, it's an OFFER, not a request.
-If someone says "Jeg kan..." (I can...) they are OFFERING, not requesting.
+CRITICAL RULES:
+1. If someone lists MULTIPLE services they offer, it's an OFFER, not a request.
+2. If someone says "Jeg kan..." (I can...) they are OFFERING, not requesting.
+3. If someone mentions their qualifications (fagbrev, erfaring, sertifikat) they are OFFERING.
+4. If the post is structured as "Do you need X? I can do X" it's an OFFER.
+5. When in doubt, lean towards OFFER - we only want genuine requests for help.
 
 Respond with ONLY one word: REQUEST or OFFER"""},
                 {"role": "user", "content": content}
