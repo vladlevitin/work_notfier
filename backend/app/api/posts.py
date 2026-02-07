@@ -13,6 +13,7 @@ async def list_posts(
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     group_url: Optional[str] = Query(default=None),
+    group_name: Optional[str] = Query(default=None),
     search: Optional[str] = Query(default=None),
     only_new: bool = Query(default=False)
 ):
@@ -22,7 +23,8 @@ async def list_posts(
     Query params:
         - limit: Max posts to return (1-1000)
         - offset: Number of posts to skip
-        - group_url: Filter by specific Facebook group
+        - group_url: Filter by specific Facebook group URL
+        - group_name: Filter by normalized group name
         - search: Search term for title/text
         - only_new: Only return posts not yet notified
     """
@@ -31,12 +33,14 @@ async def list_posts(
             limit=limit,
             offset=offset,
             group_url=group_url,
+            group_name=group_name,
             search=search,
             only_new=only_new
         )
         
         total = get_post_count(
             group_url=group_url,
+            group_name=group_name,
             search=search,
             only_new=only_new
         )

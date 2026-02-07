@@ -35,7 +35,7 @@ export const api = {
   async getPosts(
     limit: number = 100,
     offset: number = 0,
-    groupUrl?: string,
+    groupName?: string,
     search?: string,
     onlyNew: boolean = false,
     category?: string,
@@ -46,7 +46,7 @@ export const api = {
       offset: offset.toString(),
     });
     
-    if (groupUrl) params.append('group_url', groupUrl);
+    if (groupName) params.append('group_name', groupName);
     if (search) params.append('search', search);
     if (onlyNew) params.append('only_new', 'true');
     if (category) params.append('category', category);
