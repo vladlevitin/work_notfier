@@ -64,6 +64,24 @@ def get_graph_token(tenant_id: str, client_id: str, client_secret: str) -> str:
     return token["access_token"]
 
 
+def get_category_emoji(category: str) -> str:
+    """Get the emoji for a category — matches the dashboard icons."""
+    emoji_map = {
+        "Electrical": "⚡",
+        "Plumbing": "🔧",
+        "Transport / Moving": "🚚",
+        "Manual Labor": "💪",
+        "Painting / Renovation": "🎨",
+        "Cleaning / Garden": "🧹",
+        "Assembly / Furniture": "🪑",
+        "Car Mechanic": "🔩",
+        "Handyman / Misc": "🔨",
+        "IT / Tech": "💻",
+        "Other": "📦",
+    }
+    return emoji_map.get(category, "📦")
+
+
 def send_email_notification(posts: list[Post], group_url: str) -> None:
     """Send email notification with matched Facebook posts."""
     config = load_env_config()
@@ -74,19 +92,31 @@ def send_email_notification(posts: list[Post], group_url: str) -> None:
     
     token = get_graph_token(config["tenant_id"], config["client_id"], config["client_secret"])
 
-    # Build subject: Category | DateTime | Description
+    # Build subject with category-specific emoji
     if len(posts) == 1:
         post = posts[0]
-        category = post.get("category", "General")
+        category = post.get("category", "Other")
+        emoji = get_category_emoji(category)
         post_time = post.get("timestamp", "Unknown time")
         title = post.get("title", "")[:60]
-        subject = f"🚗 {category} | {post_time} | {title}"
+        subject = f"{emoji} {category} | {post_time} | {title}"
     else:
         # Multiple posts - show count and latest time
         latest_time = posts[0].get("timestamp", "Unknown time")
-        categories = list(set(p.get("category", "General") for p in posts))
+        categories = list(set(p.get("category", "Other") for p in posts))
+        # Use emoji from the first category
+        emoji = get_category_emoji(categories[0])
         cat_str = ", ".join(categories[:3])
-        subject = f"🚗 {len(posts)} jobs | {cat_str} | {latest_time}"
+        subject = f"{emoji} {len(posts)} jobs | {cat_str} | {latest_time}"
+
+    # Determine header emoji and description based on categories present
+    all_categories = list(set(p.get("category", "Other") for p in posts))
+    if len(all_categories) == 1:
+        header_emoji = get_category_emoji(all_categories[0])
+        header_label = all_categories[0]
+    else:
+        header_emoji = "📋"
+        header_label = "New Job Matches"
 
     html_body = f"""
 <html>
@@ -103,13 +133,14 @@ def send_email_notification(posts: list[Post], group_url: str) -> None:
         .post-id {{ margin-bottom: 10px; font-family: monospace; color: #888; }}
         .post-link {{ color: #2c5aa0; font-size: 14px; text-decoration: none; }}
         .post-text {{ white-space: pre-wrap; margin-top: 15px; }}
+        .category-tag {{ display: inline-block; background-color: #e8f0fe; color: #2c5aa0; padding: 4px 12px; border-radius: 12px; font-size: 13px; font-weight: 600; margin-bottom: 10px; }}
         .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666; text-align: center; }}
     </style>
 </head>
 <body>
     <div class="header">
-        <h1 style="margin: 0;">🚗 New Job Matches Found</h1>
-        <p style="margin: 10px 0 0 0;">Found <strong>{len(posts)}</strong> posts matching your driving/moving keywords</p>
+        <h1 style="margin: 0;">{header_emoji} {header_label}</h1>
+        <p style="margin: 10px 0 0 0;">Found <strong>{len(posts)}</strong> matching post(s)</p>
     </div>
 """
 
@@ -122,9 +153,12 @@ def send_email_notification(posts: list[Post], group_url: str) -> None:
         timestamp = post["timestamp"]
         group_name = post["group_name"]
         group_url_post = post["group_url"]
+        category = post.get("category", "Other")
+        emoji = get_category_emoji(category)
         
         html_body += f"""
     <div class="post-card">
+        <div class="category-tag">{emoji} {category}</div>
         <h3 class="post-title">
             <a href="{post_url}">{title_html}</a>
         </h3>
