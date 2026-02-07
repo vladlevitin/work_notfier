@@ -38,6 +38,9 @@ def get_category_with_fallback(title: str, text: str, ai_category: str) -> str:
     
     # Keyword-based fallback (matches api/posts.ts logic)
     content = (title + ' ' + text).lower()
+    # Check Car Mechanic FIRST (before Transport, since "lastebil" could false-match Transport)
+    if re.search(r'(mekaniker|bremse|brems|motor|verksted|dekk\b|eu.?kontroll|bilmekaniker)', content):
+        return "Car Mechanic"
     if re.search(r'(flytte|flytting|transport|frakte|hente.*fra|levere.*til|varebil|flyttebil)', content):
         return "Transport / Moving"
     if re.search(r'(løfte|tungt|bære tungt|laste|losse|rive|fjerne|rydde|grave|fysisk)', content):

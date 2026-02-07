@@ -20,12 +20,12 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 CATEGORIES = {
     "Electrical": "Electrician work, wiring, lights, mirrors with electrical connections, outlets, fuse boxes, stove guards",
     "Plumbing": "Pipes, water, drains, toilets, sinks, showers, bathrooms (water-related)",
-    "Transport / Moving": "ONLY for: Moving/relocating (flytte, flytting), transporting items/furniture from A to B, pickup/delivery services, needing a moving van (flyttebil). NOT for demolition, repairs, or renovation work",
+    "Transport / Moving": "ONLY for: Physically moving/transporting ITEMS or FURNITURE from place A to place B, helping someone relocate (flytte, flytting), pickup/delivery of items, needing a moving van (flyttebil), lifting and carrying items to move them. NOT for car/truck/vehicle repairs, mechanics, brakes, tires, or any work ON a vehicle. The vehicle is the TOOL for transport, not the thing being worked on",
     "Manual Labor": "Heavy lifting, carrying heavy items, physical work, loading/unloading, demolition, removal work, outdoor physical labor - no qualifications required",
     "Painting / Renovation": "Painting walls, spackling, wallpaper, renovation, construction work, tiling (fliser), carpentry, demolition (rive, riving), removing walls or structures",
     "Cleaning / Garden": "House cleaning, garden work, lawn care, window washing, snow removal",
     "Assembly / Furniture": "IKEA assembly, furniture mounting, shelves, TV mounting, disassembly",
-    "Car Mechanic": "Car repairs, car inspections, brakes, engine, mechanical work on vehicles, tire changes (dekk), bilmekaniker, car sounds/noises, vehicle diagnostics - ANY work ON the car itself",
+    "Car Mechanic": "ANY mechanical/repair work ON a vehicle (car, truck, lastebil, van): brakes (bremser), engine, tire changes (dekk), inspections (EU-kontroll), diagnostics, car sounds/noises, bilmekaniker, verksted. Includes ALL vehicle types (bil, lastebil, varebil, motorsykkel). If someone needs work DONE ON the vehicle itself, it's Car Mechanic",
     "Handyman / Misc": "Small repairs, odd jobs that don't fit other categories",
     "IT / Tech": "Computer help, phone repair, smart home, technical support",
     "General": "Only use if NOTHING else fits"
@@ -213,12 +213,16 @@ Post Title: {title}
 Post Content: {text}
 
 CRITICAL RULES - READ CAREFULLY:
-1. "Car Mechanic" = ANY work ON a car (repairs, inspections, tire changes, noises, diagnostics, brakes, engine)
-   - "bilmekaniker", "verksted", "dekk", "lyd på bilen", "sjekke bilen" = Car Mechanic
+1. "Car Mechanic" = ANY mechanical/repair work ON a vehicle (car, truck/lastebil, van, motorcycle)
+   - Brakes (bremser, bremseskift), engine, tire changes (dekk), inspections, diagnostics = Car Mechanic
+   - "bilmekaniker", "verksted", "dekk", "lyd på bilen", "sjekke bilen", "lastebil" repairs = Car Mechanic
+   - If "lastebil" (truck) appears with repair/mechanic words (bremser, motor, skifte) = Car Mechanic, NOT Transport!
    
-2. "Transport / Moving" = Moving ITEMS/FURNITURE from place A to place B, helping someone relocate
-   - "flytte", "flytting", "hente noe", "levere noe", "transport av møbler" = Transport / Moving
-   - This is NOT about fixing cars, it's about transporting things!
+2. "Transport / Moving" = ONLY physically moving/transporting ITEMS or FURNITURE from place A to place B
+   - "flytte", "flytting", "hente noe", "levere noe", "transport av møbler/ting" = Transport / Moving
+   - Also: lifting/carrying items to move them, helping someone relocate
+   - NEVER use for vehicle repairs! A "lastebil" needing brakes is Car Mechanic, not Transport!
+   - The vehicle is the TOOL for transport, NOT the thing being worked on
 
 3. "Electrical" = Electrician work, wiring, lights, outlets, fuse boxes
    - "elektriker", "stikkontakt", "lys", "speil med lys" = Electrical
@@ -240,8 +244,11 @@ Respond in JSON format:
             model="gpt-5.2-chat-latest",  # Fast and cost-effective
             messages=[
                 {"role": "system", "content": """You are a job posting analyzer for Norwegian small jobs. 
-CRITICAL: Car mechanic work (repairs, inspections, tire changes) is "Car Mechanic", NOT "Transport / Moving".
-Transport/Moving is ONLY for moving furniture/items between locations.
+CRITICAL DISTINCTION:
+- "Car Mechanic" = ANY repair/mechanical work ON a vehicle (car, truck/lastebil, van). Brakes, engine, tires, inspections = Car Mechanic.
+- "Transport / Moving" = ONLY for physically moving/transporting ITEMS from place A to B, or helping someone relocate.
+- A "lastebil" (truck) needing brake repair = Car Mechanic. A "lastebil" used to transport furniture = Transport / Moving.
+- The KEY question: Is the vehicle being REPAIRED or being USED to move things?
 Classify posts accurately into the MOST SPECIFIC category. Always respond with valid JSON only."""},
                 {"role": "user", "content": prompt}
             ],
