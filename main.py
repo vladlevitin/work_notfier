@@ -29,23 +29,10 @@ EMAIL_CATEGORIES = ["Transport / Moving", "Manual Labor"]
 
 def get_category_with_fallback(title: str, text: str, ai_category: str) -> str:
     """
-    If AI returns General, use keyword matching as fallback.
-    This matches the same logic in api/posts.ts for consistent categorization.
+    Return the AI-determined category directly.
+    All classification is handled by the AI — no keyword fallback.
     """
-    import re
-    if ai_category and ai_category != "General":
-        return ai_category
-    
-    # Keyword-based fallback (matches api/posts.ts logic)
-    content = (title + ' ' + text).lower()
-    # Check Car Mechanic FIRST (before Transport, since "lastebil" could false-match Transport)
-    if re.search(r'(mekaniker|bremse|brems|motor|verksted|dekk\b|eu.?kontroll|bilmekaniker)', content):
-        return "Car Mechanic"
-    if re.search(r'(flytte|flytting|transport|frakte|hente.*fra|levere.*til|varebil|flyttebil)', content):
-        return "Transport / Moving"
-    if re.search(r'(løfte|tungt|bære tungt|laste|losse|rive|fjerne|rydde|grave|fysisk)', content):
-        return "Manual Labor"
-    return ai_category
+    return ai_category if ai_category else "Other"
 
 
 def _force_close_edge_profile(user_data_dir: str, profile_directory: str = "Default") -> int:

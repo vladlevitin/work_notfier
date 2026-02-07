@@ -24,23 +24,9 @@ export function PostsPage() {
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const observerTarget = useRef<HTMLDivElement | null>(null);
 
-  // Helper function to get category for a post (same logic as display)
+  // Helper function to get category for a post — uses AI-assigned category only
   const getPostCategory = (post: Post): string => {
-    if (post.category) {
-      return post.category;
-    }
-    // Fallback: keyword-based categorization for posts without AI category
-    const content = (post.title + ' ' + post.text).toLowerCase();
-    if (content.match(/(elektriker|stikkontakt|lys|sikring|led|montering.*lys)/)) return 'Electrical';
-    // Check Car Mechanic BEFORE Transport (to avoid "lastebil" false-matching Transport)
-    if (content.match(/(mekaniker|bremse|brems|motor|verksted|dekk\b|eu.?kontroll|bilmekaniker)/)) return 'Car Mechanic';
-    if (content.match(/(flytte|flytting|transport|frakte|hente.*fra|levere.*til|varebil|flyttebil)/)) return 'Transport / Moving';
-    if (content.match(/(løfte|tungt|bære tungt|laste|losse|rive|fjerne|rydde|grave)/)) return 'Manual Labor';
-    if (content.match(/(male|sparkle|pusse|oppussing|renovere|snekker|gulv|vegg)/)) return 'Painting / Renovation';
-    if (content.match(/(vask|rengjøring|utvask|hage|klippe|måke|snø)/)) return 'Cleaning / Garden';
-    if (content.match(/(rørlegger|rør|vann|vvs|avløp)/)) return 'Plumbing';
-    if (content.match(/(montere|demontere|ikea|møbler|skap|seng|sofa)/)) return 'Assembly / Furniture';
-    return 'General';
+    return post.category || 'Other';
   };
 
   // Load posts
@@ -240,54 +226,36 @@ export function PostsPage() {
     'Car Mechanic',
     'Handyman / Misc',
     'IT / Tech',
-    'General'
+    'Other'
   ];
   
   // Get unique locations from posts
   const uniqueLocations = Array.from(new Set(posts.map(p => p.location).filter(Boolean)));
 
-  // Get category display with icon (fallback for non-AI processed posts)
+  // Get category display with icon — uses AI-assigned category only
   const getCategoryDisplay = (post: Post) => {
-    if (post.category) {
-      // Use AI-extracted category with specific icons
-      const categoryIcons: Record<string, string> = {
-        'Electrical': '⚡',
-        'Plumbing': '🔧',
-        'Transport': '🚚',
-        'Moving': '🚚',
-        'Manual': '💪',
-        'Labor': '💪',
-        'Painting': '🎨',
-        'Renovation': '🎨',
-        'Cleaning': '🧹',
-        'Garden': '🌿',
-        'Assembly': '🪑',
-        'Furniture': '🪑',
-        'Mechanic': '🔩',
-        'Car': '🚗',
-        'General': '📦'
-      };
-      
-      const icon = Object.entries(categoryIcons).find(([key]) => 
-        post.category?.includes(key)
-      )?.[1] || '📦';
-      
-      return { icon, name: post.category };
-    }
+    const category = post.category || 'Other';
     
-    // Fallback: keyword-based categorization for old posts
-    const content = (post.title + ' ' + post.text).toLowerCase();
-    if (content.match(/(elektriker|stikkontakt|lys|sikring|led|montering.*lys)/)) return { icon: '⚡', name: 'Electrical' };
-    // Check Car Mechanic BEFORE Transport (to avoid "lastebil" false-matching Transport)
-    if (content.match(/(mekaniker|bremse|brems|motor|verksted|dekk\b|eu.?kontroll|bilmekaniker)/)) return { icon: '🔩', name: 'Car Mechanic' };
-    if (content.match(/(flytte|flytting|transport|frakte|hente.*fra|levere.*til|varebil|flyttebil)/)) return { icon: '🚚', name: 'Transport / Moving' };
-    if (content.match(/(løfte|tungt|bære tungt|laste|losse|rive|fjerne|rydde|grave)/)) return { icon: '💪', name: 'Manual Labor' };
-    if (content.match(/(male|sparkle|pusse|oppussing|renovere|snekker|gulv|vegg)/)) return { icon: '🎨', name: 'Painting / Renovation' };
-    if (content.match(/(vask|rengjøring|utvask|hage|klippe|måke|snø)/)) return { icon: '🧹', name: 'Cleaning / Garden' };
-    if (content.match(/(rørlegger|rør|vann|vvs|avløp)/)) return { icon: '🔧', name: 'Plumbing' };
-    if (content.match(/(montere|demontere|ikea|møbler|skap|seng|sofa)/)) return { icon: '🪑', name: 'Assembly / Furniture' };
+    const categoryIcons: Record<string, string> = {
+      'Electrical': '⚡',
+      'Plumbing': '🔧',
+      'Transport / Moving': '🚚',
+      'Manual Labor': '💪',
+      'Painting / Renovation': '🎨',
+      'Cleaning / Garden': '🧹',
+      'Assembly / Furniture': '🪑',
+      'Car Mechanic': '🔩',
+      'Handyman / Misc': '🔨',
+      'IT / Tech': '💻',
+      'Other': '📦',
+    };
     
-    return { icon: '📦', name: 'General' };
+    // Try exact match first, then partial match
+    const icon = categoryIcons[category] || 
+      Object.entries(categoryIcons).find(([key]) => category.includes(key))?.[1] || 
+      '📦';
+    
+    return { icon, name: category };
   };
 
   return (

@@ -16,19 +16,19 @@ load_dotenv()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# Define available categories with descriptions
+# Define available categories with descriptions for AI classification
 CATEGORIES = {
     "Electrical": "Electrician work, wiring, lights, mirrors with electrical connections, outlets, fuse boxes, stove guards",
     "Plumbing": "Pipes, water, drains, toilets, sinks, showers, bathrooms (water-related)",
-    "Transport / Moving": "ONLY for: Physically moving/transporting ITEMS or FURNITURE from place A to place B, helping someone relocate (flytte, flytting), pickup/delivery of items, needing a moving van (flyttebil), lifting and carrying items to move them. NOT for car/truck/vehicle repairs, mechanics, brakes, tires, or any work ON a vehicle. The vehicle is the TOOL for transport, not the thing being worked on",
+    "Transport / Moving": "Physically moving/transporting ITEMS or FURNITURE from place A to place B, helping someone relocate, pickup/delivery of items, needing a moving van, lifting and carrying items to move them. The vehicle is the TOOL for transport, NOT the thing being worked on",
     "Manual Labor": "Heavy lifting, carrying heavy items, physical work, loading/unloading, demolition, removal work, outdoor physical labor - no qualifications required",
-    "Painting / Renovation": "Painting walls, spackling, wallpaper, renovation, construction work, tiling (fliser), carpentry, demolition (rive, riving), removing walls or structures",
+    "Painting / Renovation": "Painting walls, spackling, wallpaper, renovation, construction work, tiling (fliser), carpentry, demolition, removing walls or structures",
     "Cleaning / Garden": "House cleaning, garden work, lawn care, window washing, snow removal",
     "Assembly / Furniture": "IKEA assembly, furniture mounting, shelves, TV mounting, disassembly",
-    "Car Mechanic": "ANY mechanical/repair work ON a vehicle (car, truck, lastebil, van): brakes (bremser), engine, tire changes (dekk), inspections (EU-kontroll), diagnostics, car sounds/noises, bilmekaniker, verksted. Includes ALL vehicle types (bil, lastebil, varebil, motorsykkel). If someone needs work DONE ON the vehicle itself, it's Car Mechanic",
-    "Handyman / Misc": "Small repairs, odd jobs that don't fit other categories",
+    "Car Mechanic": "Any mechanical/repair work ON a vehicle (car, truck/lastebil, van, motorcycle): brakes, engine, tire changes, inspections, diagnostics, car sounds/noises. If someone needs work DONE ON the vehicle itself, it's Car Mechanic",
+    "Handyman / Misc": "Small repairs, odd jobs that don't fit other specific categories",
     "IT / Tech": "Computer help, phone repair, smart home, technical support",
-    "General": "Only use if NOTHING else fits"
+    "Other": "Posts that don't fit any of the above categories - e.g. crowdfunding, pet care, babysitting, tutoring, personal services, etc."
 }
 
 CATEGORY_LIST = list(CATEGORIES.keys())
@@ -36,142 +36,43 @@ CATEGORY_LIST = list(CATEGORIES.keys())
 
 def is_service_request(title: str, text: str) -> bool:
     """
-    Use OpenAI to determine if a post is a SERVICE REQUEST (someone needs help)
+    Use AI to determine if a post is a SERVICE REQUEST (someone needs help)
     vs a SERVICE OFFER (someone offering their services).
+    
+    This is 100% AI-driven — no keyword matching.
     
     Returns True if it's a request for service (we want to keep these).
     Returns False if it's an offer/advertisement (we want to filter these out).
     """
     content = f"{title}\n{text}"
-    content_lower = content.lower()
     
-    # Quick keyword-based pre-filter for obvious service OFFERS
-    # These patterns clearly indicate someone is OFFERING services, not requesting
-    offer_patterns = [
-        "vi tilbyr",           # We offer
-        "jeg tilbyr",          # I offer
-        "tilbyr mine tjenester",  # Offer my services
-        "tilbyr hjelp",        # Offer help
-        "tilbyr flyttehjelp",  # Offer moving help
-        "tilbyr tjenester",    # Offer services
-        "utfører alle typer",  # Perform all types
-        "utfører oppdrag",     # Perform jobs
-        "vi utfører",          # We perform
-        "jeg utfører",         # I perform
-        "ledig kapasitet",     # Available capacity
-        "har ledig tid",       # Have available time
-        "ta kontakt for",      # Contact for
-        "kontakt meg for",     # Contact me for
-        "send pm for",         # Send PM for
-        "send melding for",    # Send message for
-        "rimelige priser",     # Reasonable prices
-        "konkurransedyktige priser",  # Competitive prices
-        "gode priser",         # Good prices
-        "erfaren håndverker",  # Experienced handyman
-        "erfaren snekker",     # Experienced carpenter
-        "erfaren elektriker",  # Experienced electrician
-        "erfaren maler",       # Experienced painter
-        "vi kan hjelpe",       # We can help
-        "jeg kan hjelpe",      # I can help
-        "jeg kan også",        # I can also (offering additional services)
-        "effektive og hyggelige",  # Efficient and friendly (common ad phrase)
-        "hyggelige karer",     # Friendly guys (common ad phrase)
-        "ønsker kun seriøse",  # Only want serious (inquiries)
-        "kun seriøse henvendelser",  # Only serious inquiries
-        "vi er et firma",      # We are a company
-        "vårt firma",          # Our company
-        "min bedrift",         # My business
-        "stiller med",         # Come with (equipment/van)
-        "stor kassebil",       # Large box van (advertising their equipment)
-        "egen bil",            # Own car (advertising their equipment)
-        "har fagbrev",         # Has trade certificate (advertising qualifications)
-        "års erfaring",        # Years of experience (advertising qualifications)
-        "lang erfaring",       # Long experience
-        "ta kontakt så",       # Contact us and we'll... (offering services)
-        "jeg kan bygge",       # I can build
-        "jeg kan fikse",       # I can fix
-        "jeg kan reparere",    # I can repair
-        "jeg kan montere",     # I can install/assemble
-        "jeg kan male",        # I can paint
-        "jeg kan pusse",       # I can renovate
-        "jeg kan gjøre",       # I can do
-        "vi kan gjøre",        # We can do
-        "vi kan fikse",        # We can fix
-        "vi kan bygge",        # We can build
-        "vi kan montere",      # We can install/assemble
-        "dersom det er ønskelig",  # If desired (offering optional services)
-        "trenger du hjelp",    # Do you need help? (asking if YOU need = offering)
-        "trenger du noen",     # Do you need someone? (offering)
-        "trenger du flyttehjelp",  # Do you need moving help? (offering)
-        "fikser vi",           # We fix (advertising services)
-        "ordner vi",           # We arrange/fix (advertising services)
-        "beste prisene",       # Best prices
-        "de beste prisene",    # The best prices
-        "billigste prisene",   # Cheapest prices
-        "send pm om",          # Send PM if (offering services)
-        "send melding om",     # Send message if (offering services)
-        "om du trenger",       # If you need (offering services)
-        "hvis du trenger",     # If you need (offering services)
-        "vi har de beste",     # We have the best
-        "vi fikser",           # We fix
-        "vi ordner",           # We arrange
-        "alt fra",             # Everything from (listing multiple services)
-    ]
-    
-    for pattern in offer_patterns:
-        if pattern in content_lower:
-            print(f"    [FILTER] Rejected as OFFER (keyword: '{pattern}')")
-            return False
-    
-    # If no obvious offer keywords, use OpenAI for nuanced classification
     try:
         response = client.chat.completions.create(
             model="gpt-5.2-chat-latest",
             messages=[
-                {"role": "system", "content": """You analyze Norwegian/English job postings to classify them as REQUEST or OFFER.
+                {"role": "system", "content": """You are an expert at analyzing Norwegian/English job postings from Facebook groups. Your job is to determine whether a post is someone ASKING for a service (REQUEST) or someone OFFERING/ADVERTISING a service (OFFER).
 
-OFFER (return "OFFER") - Someone is ADVERTISING/OFFERING their services:
-- "Tilbyr..." / "Vi tilbyr..." / "Jeg tilbyr..."
-- "Utfører..." / "Vi utfører..."  
-- "Jeg kan hjelpe med..." / "Jeg kan..." / "Jeg kan også..."
-- Posts that LIST MULTIPLE SERVICES they can provide (like a menu of services)
-- "TRENGER DU HJELP?" / "Trenger du hjelp med...?" = OFFER (asking if YOU need help = advertising!)
-- "Har du en [thing] som trenger [service]?" = OFFER (asking if YOU need their service)
-- "Trenger du [service]? Vi/Jeg kan..." = OFFER (question directed at reader + what they offer)
-- "Send PM om du trenger hjelp" = OFFER (inviting customers to contact them)
-- "Ledig kapasitet..." / "Vi har ledig tid..."
-- "Ta kontakt for tilbud..." / "Send meg PM" / "Ta kontakt så..."
-- "Rimelige priser..." / "Gode priser..." / "Beste prisene..."
-- "Erfaren [profession] tilbyr..."
-- Someone describing their experience, qualifications, or certifications (e.g. "fagbrev", "års erfaring")
-- "Ønsker kun seriøse henvendelser" (only serious inquiries)
-- Company/business/professional advertising services
-- Looking to HIRE workers for their business
-- "Flyttebyrå trenger..." (company looking for workers)
-- Someone saying what THEY can do for YOU (building, fixing, repairing, installing)
-- "Dersom det er ønskelig" (if desired) - offering optional extras
-- "Vi fikser..." / "Vi ordner..." / "...fikser vi" = OFFER (we fix/arrange)
-- "Alt fra [X] til [Y]" = OFFER (listing range of services)
+OFFER (return "OFFER") — The poster is OFFERING or ADVERTISING their services to others:
+- They describe what services THEY can provide
+- They list their skills, qualifications, experience, or equipment
+- They mention prices, rates, or competitive pricing
+- They invite people to contact them for services
+- They ask rhetorical questions like "Trenger du hjelp?" (Do you need help?) followed by what they can do
+- They use language like "Vi/Jeg tilbyr...", "Vi/Jeg utfører...", "Vi/Jeg kan...", "Vi fikser..."
+- They describe their business, company, or professional background
+- They list MULTIPLE services they provide
+- Companies looking to HIRE workers for their business
 
-REQUEST (return "REQUEST") - Someone NEEDS a specific job done:
-- "Trenger hjelp med..." / "Trenger noen som kan..."
-- "Ser etter noen som kan..."
-- "Ønsker å få [specific task]..." 
-- "Noen som kan [specific task]?" (asking for help with ONE specific task)
-- "Hva koster det å...?" (asking for price quote)
-- Individual person needing ONE specific job done
-- Asking for help with a concrete, specific task
+REQUEST (return "REQUEST") — The poster NEEDS someone to do a specific job for them:
+- They describe a specific task they need done
+- They are asking for help with something concrete
+- They use language like "Trenger hjelp med...", "Ser etter noen som kan...", "Noen som kan...?"
+- They are an individual person needing a specific service performed
+- They ask for price quotes or availability
 
-CRITICAL RULES:
-1. If someone lists MULTIPLE services they offer, it's an OFFER, not a request.
-2. If someone says "Jeg kan..." (I can...) or "Vi fikser..." (We fix...) they are OFFERING, not requesting.
-3. If someone mentions their qualifications (fagbrev, erfaring, sertifikat) they are OFFERING.
-4. If the post is structured as "Do you need X? I/We can do X" it's an OFFER.
-5. "Trenger du hjelp med...?" (Do YOU need help with...?) is an OFFER - they're advertising to potential customers!
-   This is different from "Trenger hjelp med..." (Need help with...) which is a REQUEST.
-6. If someone mentions prices ("beste prisene", "gode priser") they are OFFERING.
-7. "Send PM om du trenger..." (Send PM if you need...) is an OFFER.
-8. When in doubt, lean towards OFFER - we only want genuine requests for help.
+KEY DISTINCTION: "Trenger du hjelp med...?" (Do YOU need help?) = OFFER (advertising to customers). "Trenger hjelp med..." (Need help with...) = REQUEST (asking for help).
+
+When in doubt, classify as OFFER — we only want genuine requests where someone needs a job done.
 
 Respond with ONLY one word: REQUEST or OFFER"""},
                 {"role": "user", "content": content}
@@ -181,16 +82,23 @@ Respond with ONLY one word: REQUEST or OFFER"""},
         )
         
         result = response.choices[0].message.content.strip().upper()
-        return "REQUEST" in result
+        is_request = "REQUEST" in result
+        if not is_request:
+            print(f"    [AI FILTER] Rejected as OFFER")
+        return is_request
         
     except Exception as e:
-        # Default to keeping the post if classification fails
+        print(f"    [AI FILTER] Error: {str(e)[:50]} - keeping post")
+        # Default to keeping the post if AI fails
         return True
 
 
 def process_post_with_ai(title: str, text: str, post_id: str) -> Dict[str, any]:
     """
-    Use OpenAI to extract category, location, and features from a post.
+    Use AI to classify a post into a category and extract location/features.
+    
+    This is 100% AI-driven — no keyword matching. The AI receives the full list
+    of available categories and picks the best match.
     
     Args:
         title: Post title
@@ -204,34 +112,24 @@ def process_post_with_ai(title: str, text: str, post_id: str) -> Dict[str, any]:
         # Build category descriptions for the prompt
         category_desc = "\n".join([f"- {cat}: {desc}" for cat, desc in CATEGORIES.items()])
         
-        prompt = f"""Analyze this Norwegian job posting and classify it.
+        prompt = f"""Analyze this Norwegian job posting and classify it into the most appropriate category.
 
-CATEGORIES (choose the MOST SPECIFIC one that matches):
+AVAILABLE CATEGORIES:
 {category_desc}
 
 Post Title: {title}
 Post Content: {text}
 
-CRITICAL RULES - READ CAREFULLY:
-1. "Car Mechanic" = ANY mechanical/repair work ON a vehicle (car, truck/lastebil, van, motorcycle)
-   - Brakes (bremser, bremseskift), engine, tire changes (dekk), inspections, diagnostics = Car Mechanic
-   - "bilmekaniker", "verksted", "dekk", "lyd på bilen", "sjekke bilen", "lastebil" repairs = Car Mechanic
-   - If "lastebil" (truck) appears with repair/mechanic words (bremser, motor, skifte) = Car Mechanic, NOT Transport!
-   
-2. "Transport / Moving" = ONLY physically moving/transporting ITEMS or FURNITURE from place A to place B
-   - "flytte", "flytting", "hente noe", "levere noe", "transport av møbler/ting" = Transport / Moving
-   - Also: lifting/carrying items to move them, helping someone relocate
-   - NEVER use for vehicle repairs! A "lastebil" needing brakes is Car Mechanic, not Transport!
-   - The vehicle is the TOOL for transport, NOT the thing being worked on
+Instructions:
+- Choose the single MOST SPECIFIC category that best matches the post.
+- "Car Mechanic" is for work DONE ON a vehicle (repairs, brakes, tires, engine, inspections).
+- "Transport / Moving" is for physically moving/transporting ITEMS from one place to another, or helping someone relocate. The vehicle is the tool, not the subject.
+- Use "Other" for posts that genuinely don't fit any specific category (e.g. crowdfunding, pet care, tutoring).
+- Extract the location if mentioned (city, area, or district name).
 
-3. "Electrical" = Electrician work, wiring, lights, outlets, fuse boxes
-   - "elektriker", "stikkontakt", "lys", "speil med lys" = Electrical
-
-4. Do NOT use "General" unless absolutely nothing else fits
-
-Respond in JSON format:
+Respond in JSON format only:
 {{
-  "category": "one of the exact category names above",
+  "category": "one of the exact category names listed above",
   "location": "city or area name, or Unknown",
   "features": {{
     "urgency": "urgent/normal/flexible",
@@ -241,18 +139,12 @@ Respond in JSON format:
 }}"""
 
         response = client.chat.completions.create(
-            model="gpt-5.2-chat-latest",  # Fast and cost-effective
+            model="gpt-5.2-chat-latest",
             messages=[
-                {"role": "system", "content": """You are a job posting analyzer for Norwegian small jobs. 
-CRITICAL DISTINCTION:
-- "Car Mechanic" = ANY repair/mechanical work ON a vehicle (car, truck/lastebil, van). Brakes, engine, tires, inspections = Car Mechanic.
-- "Transport / Moving" = ONLY for physically moving/transporting ITEMS from place A to B, or helping someone relocate.
-- A "lastebil" (truck) needing brake repair = Car Mechanic. A "lastebil" used to transport furniture = Transport / Moving.
-- The KEY question: Is the vehicle being REPAIRED or being USED to move things?
-Classify posts accurately into the MOST SPECIFIC category. Always respond with valid JSON only."""},
+                {"role": "system", "content": "You are a Norwegian job posting classifier. Classify posts into the most specific matching category. Always respond with valid JSON only."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.1,  # Lower temperature for more consistent classification
+            temperature=0.1,
             max_tokens=200
         )
         
@@ -262,7 +154,7 @@ Classify posts accurately into the MOST SPECIFIC category. Always respond with v
         result = json.loads(content)
         
         # Validate category is one of the valid ones
-        category = result.get("category", "General")
+        category = result.get("category", "Other")
         if category not in CATEGORY_LIST:
             # Try to find a close match
             category_lower = category.lower()
@@ -271,7 +163,7 @@ Classify posts accurately into the MOST SPECIFIC category. Always respond with v
                     category = valid_cat
                     break
             else:
-                category = "General"
+                category = "Other"
         
         return {
             "category": category,
@@ -281,10 +173,9 @@ Classify posts accurately into the MOST SPECIFIC category. Always respond with v
         }
         
     except Exception as e:
-        # Silently handle AI failures
-        # Return fallback values
+        print(f"    [AI CLASSIFY] Error: {str(e)[:50]}")
         return {
-            "category": "General",
+            "category": "Other",
             "location": "Unknown",
             "ai_features": {},
             "ai_processed": False
