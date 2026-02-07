@@ -261,6 +261,8 @@ def get_stats() -> dict:
         group_counts = {}
         for post in all_posts.data:
             group_name = post.get("group_name", "Unknown")
+            # Normalize group name: strip "(1) ", "(2) ", etc. prefixes from Facebook tab titles
+            group_name = re.sub(r'^\(\d+\)\s*', '', group_name)
             group_counts[group_name] = group_counts.get(group_name, 0) + 1
         
         by_group = [{"group": group, "count": count} for group, count in group_counts.items()]
