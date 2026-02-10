@@ -277,15 +277,13 @@ export function PostsPage() {
       <div className="header">
         <h1>🚗 Facebook Work Notifier Dashboard</h1>
         
-        {/* Aggregate Stats Section */}
+        {/* Dynamic Post Count */}
         <div className="stats-bar stats-aggregate">
           <div className="stat-item stat-large">
-            <span className="stat-label">Total Posts</span>
-            <span className="stat-value">{stats?.total || 0}</span>
-          </div>
-          <div className="stat-item stat-large">
-            <span className="stat-label">New Posts</span>
-            <span className="stat-value highlight">{stats?.new || 0}</span>
+            <span className="stat-label">
+              {(groupFilter || categoryFilter || locationFilter || searchFilter || showOnlyNew) ? 'Matching Posts' : 'Total Posts'}
+            </span>
+            <span className="stat-value highlight">{total}</span>
           </div>
         </div>
         
