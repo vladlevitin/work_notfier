@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { api, Post, Stats } from '../api/client';
 import './Posts.css';
 
@@ -46,15 +46,13 @@ export function PostsPage() {
     
     try {
       const currentOffset = reset ? 0 : offset;
-      // Send category filter to API - server handles filtering with same fallback logic
+      // Don't send category/location to backend — filter client-side using displayed category
       const response = await api.getPosts(
         PAGE_SIZE,
         currentOffset,
         groupFilter || undefined,
         searchFilter || undefined,
-        showOnlyNew,
-        categoryFilter || undefined,
-        locationFilter || undefined
+        showOnlyNew
       );
       
       if (reset) {
@@ -272,6 +270,20 @@ export function PostsPage() {
     return { icon: '📦', name: 'Other' };
   };
 
+  // Client-side filtering by displayed category and location
+  const displayedPosts = useMemo(() => {
+    return posts.filter((post) => {
+      if (categoryFilter) {
+        const displayedCategory = getCategoryDisplay(post).name;
+        if (displayedCategory !== categoryFilter) return false;
+      }
+      if (locationFilter) {
+        if (!post.location || !post.location.toLowerCase().includes(locationFilter.toLowerCase())) return false;
+      }
+      return true;
+    });
+  }, [posts, categoryFilter, locationFilter]);
+
   return (
     <div className="container">
       <div className="header">
@@ -283,16 +295,17 @@ export function PostsPage() {
             <span className="stat-label">
               {(groupFilter || categoryFilter || locationFilter || searchFilter || showOnlyNew) ? 'Matching Posts' : 'Total Posts'}
             </span>
-            <span className="stat-value">{total}</span>
+            <span className="stat-value">{(categoryFilter || locationFilter) ? displayedPosts.length : total}</span>
           </div>
         </div>
         
         {/* Per-Group Stats Section — dynamically reflects filters */}
         {(() => {
           const hasFilters = groupFilter || categoryFilter || locationFilter || searchFilter || showOnlyNew;
+          const postsForStats = (categoryFilter || locationFilter) ? displayedPosts : posts;
           const groupData = hasFilters
             ? Object.entries(
-                posts.reduce<Record<string, number>>((acc, p) => {
+                postsForStats.reduce<Record<string, number>>((acc, p) => {
                   const name = normalizeGroupName(p.group_name);
                   acc[name] = (acc[name] || 0) + 1;
                   return acc;
@@ -402,7 +415,7 @@ export function PostsPage() {
 
       {loading ? (
         <div className="loading">Loading posts...</div>
-      ) : posts.length === 0 ? (
+      ) : displayedPosts.length === 0 ? (
         <div className="empty-state">
           <div className="empty-icon">📭</div>
           <h2>No Posts Found</h2>
@@ -411,7 +424,7 @@ export function PostsPage() {
       ) : (
         <>
           <div className="posts-grid">
-            {posts.map((post) => (
+            {displayedPosts.map((post) => (
               <a 
                 key={post.post_id} 
                 href={`/post/${encodeURIComponent(post.post_id)}`}
@@ -489,8 +502,8 @@ export function PostsPage() {
           )}
           
           <div className="pagination-info">
-            Showing {posts.length} of {total} posts
-            {hasMore && ' (scroll for more)'}
+            Showing {displayedPosts.length} of {(categoryFilter || locationFilter) ? displayedPosts.length : total} posts
+            {hasMore && !categoryFilter && !locationFilter && ' (scroll for more)'}
           </div>
         </>
       )}
