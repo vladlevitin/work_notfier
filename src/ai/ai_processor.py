@@ -207,8 +207,8 @@ Post Content: {text}
 Instructions:
 - Choose exactly ONE primary category — the MAIN task the person needs done.
 - Also list any secondary categories if the post involves additional tasks from other categories. Only include secondary categories that are clearly mentioned — don't guess.
-- "Car Mechanic" is for work DONE ON a vehicle (repairs, brakes, tires, engine, inspections).
-- "Transport / Moving" is ONLY for physically moving/transporting items from place A to place B, or helping someone relocate.
+- "Car Mechanic" is for work DONE ON a vehicle (repairs, brakes, tires, engine, inspections, tow bar/tilhengerfeste installation, car painting/lakkering, software updates on cars). If someone needs something installed or fixed ON their car, it's Car Mechanic.
+- "Transport / Moving" is ONLY for physically moving/transporting items from place A to place B, or helping someone relocate. NOT for installing parts on vehicles.
 - "Painting / Renovation" covers carpentry (snekker), building custom items, woodwork, construction.
 - "Assembly / Furniture" is for assembling pre-made/flat-pack items (IKEA, shelves, TV mounting).
 - "Manual Labor" is for heavy lifting, carrying, demolition, removal work.
@@ -220,6 +220,7 @@ EXAMPLES:
 - "Trenger å flytte en sofa fra 3.etg ned til bilen" → primary: "Transport / Moving", secondary: ["Manual Labor"]
 - "Sparkle, slipe og male et rom + montere ny lampe" → primary: "Painting / Renovation", secondary: ["Electrical"]
 - "Trenger hjelp til å kaste søppel, noe bæring involvert" → primary: "Manual Labor", secondary: ["Transport / Moving"]
+- "Montere tilhengerfeste med software på en Volvo XC90" → primary: "Car Mechanic", secondary: [] (work ON a vehicle)
 - Building foldable wall panels by a carpenter → primary: "Painting / Renovation", secondary: []
 
 Respond in JSON format only:

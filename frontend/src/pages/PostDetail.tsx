@@ -120,13 +120,14 @@ export function PostDetailPage() {
     }
 
     const content = (post.title + ' ' + post.text).toLowerCase();
-    if (content.match(/(flytte|bære|transport|frakte|hente|kjøre|henger)/)) return { icon: '🚚', name: 'Transport / Moving' };
+    // Car Mechanic BEFORE Transport — so vehicle-specific keywords win
+    if (content.match(/(tilhengerfeste|bilmekaniker|mekaniker|verksted|bremse|dekk|eu.?kontroll|lakk(?:ering)?.*bil|bil.*lakk|registerreim|clutch|eksosanlegg|motor(?!sykkel.*frakte))/)) return { icon: '🔩', name: 'Car Mechanic' };
+    if (content.match(/(flytte|transport|frakte|hente.*fra|kjøre.*fra|kjøre.*til|tilhenger(?!feste))/)) return { icon: '🚚', name: 'Transport / Moving' };
     if (content.match(/(male|sparkle|pusse|oppussing|renovere|snekker|gulv|vegg|fliser|tapet)/)) return { icon: '🎨', name: 'Painting / Renovation' };
     if (content.match(/(vask|rengjøring|utvask|hage|klippe|måke|snø)/)) return { icon: '🧹', name: 'Cleaning / Garden' };
     if (content.match(/(rørlegger|rør|avløp|toalett|dusj|vann|vvs)/)) return { icon: '🔧', name: 'Plumbing' };
     if (content.match(/(elektriker|strøm|sikring|lys|stikkontakt|kurs)/)) return { icon: '⚡', name: 'Electrical' };
     if (content.match(/(montere|demontere|ikea|møbler|skap|seng|hylle|tv.*vegg)/)) return { icon: '🪑', name: 'Assembly / Furniture' };
-    if (content.match(/(bil|motor|bremse|dekk|verksted|mekaniker|eu.*kontroll)/)) return { icon: '🔩', name: 'Car Mechanic' };
     if (content.match(/(pc|data|mobil|skjerm|printer|wifi|internett|smart.*hjem)/)) return { icon: '💻', name: 'IT / Tech' };
     if (content.match(/(løfte|bære|tungt|rive|demoler|rydde|kaste)/)) return { icon: '🏗️', name: 'Manual Labor' };
     if (content.match(/(reparere|fikse|bytte|ordne|småjobb)/)) return { icon: '🔨', name: 'Handyman / Misc' };
