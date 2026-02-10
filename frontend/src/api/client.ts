@@ -14,6 +14,7 @@ export interface Post {
   scraped_at: string;
   notified: number;
   category?: string;
+  secondary_categories?: string;  // JSON string of secondary category names
   location?: string;
   ai_processed?: boolean;
 }

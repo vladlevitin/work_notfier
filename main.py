@@ -387,6 +387,7 @@ def scrape_single_group(group_config: dict, group_idx: int, total_groups: int, o
                     ai_category = ai_result.get("category", "General")
                     if ai_result.get("location"):
                         post["location"] = ai_result.get("location")
+                    post["secondary_categories"] = ai_result.get("secondary_categories", [])
                 except Exception:
                     ai_category = "General"
                 
@@ -604,6 +605,7 @@ def scrape_group_with_persistent_driver(driver, group_config: dict, group_idx: i
                     ai_category = ai_result.get("category", "General")
                     if ai_result.get("location"):
                         post["location"] = ai_result.get("location")
+                    post["secondary_categories"] = ai_result.get("secondary_categories", [])
                 except Exception:
                     ai_category = "General"
                 
@@ -959,6 +961,7 @@ def run_scrape_cycle_multitab(driver, facebook_groups: list, openai_ok: bool, cy
                         ai_category = ai_result.get("category", "General")
                         if ai_result.get("location"):
                             post["location"] = ai_result.get("location")
+                        post["secondary_categories"] = ai_result.get("secondary_categories", [])
                     except Exception:
                         ai_category = "General"
                     
@@ -1154,6 +1157,7 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
                     ai_category = ai_result.get("category", "General")
                     if ai_result.get("location"):
                         post["location"] = ai_result.get("location")
+                    post["secondary_categories"] = ai_result.get("secondary_categories", [])
                 except Exception as e:
                     print(f"    [AI ERROR] {str(e)[:50]}")
                     ai_category = "General"

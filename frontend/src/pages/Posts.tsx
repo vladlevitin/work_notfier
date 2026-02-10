@@ -155,31 +155,45 @@ export function PostsPage() {
   // Get unique locations from all posts
   const uniqueLocations = Array.from(new Set(allPosts.map(p => p.location).filter(Boolean)));
 
-  // Get category display with icon — uses AI-assigned category, falls back to keyword matching
-  const getCategoryDisplay = (post: Post) => {
-    const categoryIcons: Record<string, string> = {
-      'Electrical': '⚡',
-      'Plumbing': '🔧',
-      'Transport / Moving': '🚚',
-      'Manual Labor': '🏗️',
-      'Painting / Renovation': '🎨',
-      'Cleaning / Garden': '🧹',
-      'Assembly / Furniture': '🪑',
-      'Car Mechanic': '🔩',
-      'Handyman / Misc': '🔨',
-      'IT / Tech': '💻',
-      'Other': '📦',
-    };
+  const categoryIcons: Record<string, string> = {
+    'Electrical': '⚡',
+    'Plumbing': '🔧',
+    'Transport / Moving': '🚚',
+    'Manual Labor': '🏗️',
+    'Painting / Renovation': '🎨',
+    'Cleaning / Garden': '🧹',
+    'Assembly / Furniture': '🪑',
+    'Car Mechanic': '🔩',
+    'Handyman / Misc': '🔨',
+    'IT / Tech': '💻',
+    'Other': '📦',
+  };
 
+  const getIconForCategory = (cat: string): string => {
+    return categoryIcons[cat] || 
+      Object.entries(categoryIcons).find(([key]) => cat.includes(key))?.[1] || 
+      '📦';
+  };
+
+  // Parse secondary categories from JSON string stored in DB
+  const getSecondaryCategories = (post: Post): string[] => {
+    if (!post.secondary_categories) return [];
+    try {
+      const parsed = JSON.parse(post.secondary_categories);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
+  // Get category display with icon — uses AI-assigned category, falls back to keyword matching
+  const getCategoryDisplay = (post: Post): { icon: string; name: string } => {
     // Use AI-assigned category if available
     if (post.category && post.category !== 'Other' && post.category !== 'General') {
-      const icon = categoryIcons[post.category] || 
-        Object.entries(categoryIcons).find(([key]) => post.category!.includes(key))?.[1] || 
-        '📦';
-      return { icon, name: post.category };
+      return { icon: getIconForCategory(post.category), name: post.category };
     }
 
-    // Fallback: keyword-based categorization (same as PostDetail)
+    // Fallback: keyword-based categorization
     const content = (post.title + ' ' + post.text).toLowerCase();
     if (content.match(/(flytte|bære|transport|frakte|hente|kjøre|henger)/)) return { icon: '🚚', name: 'Transport / Moving' };
     if (content.match(/(male|sparkle|pusse|oppussing|renovere|snekker|gulv|vegg|fliser|tapet)/)) return { icon: '🎨', name: 'Painting / Renovation' };
@@ -365,14 +379,26 @@ export function PostsPage() {
                   🕒 {getDisplayTimestamp(post)}
                 </div>
 
-                {/* Category Tag - Right after date */}
+                {/* Category Tags */}
                 <div className="category-tag">
                   {(() => {
                     const cat = getCategoryDisplay(post);
+                    const secondary = getSecondaryCategories(post);
                     return (
-                      <span className="category-badge">
-                        {cat.icon} {cat.name}
-                      </span>
+                      <>
+                        <span className="category-badge">
+                          {cat.icon} {cat.name}
+                        </span>
+                        {secondary.length > 0 && (
+                          <span className="secondary-categories">
+                            {secondary.map(s => (
+                              <span key={s} className="category-badge secondary">
+                                {getIconForCategory(s)} {s}
+                              </span>
+                            ))}
+                          </span>
+                        )}
+                      </>
                     );
                   })()}
                 </div>

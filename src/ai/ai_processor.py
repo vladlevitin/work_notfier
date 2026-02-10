@@ -196,7 +196,7 @@ def process_post_with_ai(title: str, text: str, post_id: str) -> Dict[str, any]:
         # Build category descriptions for the prompt
         category_desc = "\n".join([f"- {cat}: {desc}" for cat, desc in CATEGORIES.items()])
         
-        prompt = f"""Analyze this Norwegian job posting and classify it into the most appropriate category.
+        prompt = f"""Analyze this Norwegian job posting and classify it into categories.
 
 AVAILABLE CATEGORIES:
 {category_desc}
@@ -205,22 +205,27 @@ Post Title: {title}
 Post Content: {text}
 
 Instructions:
-- Choose the single MOST SPECIFIC category that best matches the PRIMARY TASK described in the post.
+- Choose exactly ONE primary category — the MAIN task the person needs done.
+- Also list any secondary categories if the post involves additional tasks from other categories. Only include secondary categories that are clearly mentioned — don't guess.
 - "Car Mechanic" is for work DONE ON a vehicle (repairs, brakes, tires, engine, inspections).
-- "Transport / Moving" is ONLY for physically moving/transporting items from place A to place B, or helping someone relocate. Do NOT classify as Transport just because the post mentions carrying, folding, or portable items — focus on what the person NEEDS DONE.
-- "Painting / Renovation" covers carpentry (snekker), building custom items, woodwork, construction — if someone needs something BUILT or CONSTRUCTED, it goes here.
+- "Transport / Moving" is ONLY for physically moving/transporting items from place A to place B, or helping someone relocate.
+- "Painting / Renovation" covers carpentry (snekker), building custom items, woodwork, construction.
 - "Assembly / Furniture" is for assembling pre-made/flat-pack items (IKEA, shelves, TV mounting).
-- Use "Other" for posts that genuinely don't fit any specific category (e.g. crowdfunding, pet care, tutoring).
+- "Manual Labor" is for heavy lifting, carrying, demolition, removal work.
+- Use "Other" for posts that genuinely don't fit any specific category.
 - Extract the location if mentioned (city, area, or district name).
 
 EXAMPLES:
-- Building foldable backdrop/wall panels by a carpenter → "Painting / Renovation" (carpentry/construction, NOT transport)
-- Moving a sofa from apartment A to apartment B → "Transport / Moving"
-- Assembling IKEA furniture → "Assembly / Furniture"
+- "Trenger hjelp med flyttevask, innbo skal kastes, men noen ting må gamles til loppemarked" → primary: "Cleaning / Garden", secondary: ["Transport / Moving"]
+- "Trenger å flytte en sofa fra 3.etg ned til bilen" → primary: "Transport / Moving", secondary: ["Manual Labor"]
+- "Sparkle, slipe og male et rom + montere ny lampe" → primary: "Painting / Renovation", secondary: ["Electrical"]
+- "Trenger hjelp til å kaste søppel, noe bæring involvert" → primary: "Manual Labor", secondary: ["Transport / Moving"]
+- Building foldable wall panels by a carpenter → primary: "Painting / Renovation", secondary: []
 
 Respond in JSON format only:
 {{
   "category": "one of the exact category names listed above",
+  "secondary_categories": ["other relevant category names, or empty array if none"],
   "location": "city or area name, or Unknown",
   "features": {{
     "urgency": "urgent/normal/flexible",
@@ -232,11 +237,11 @@ Respond in JSON format only:
         response = client.chat.completions.create(
             model=AI_MODEL,
             messages=[
-                {"role": "system", "content": "You are a Norwegian job posting classifier. Classify posts into the most specific matching category. Always respond with valid JSON only."},
+                {"role": "system", "content": "You are a Norwegian job posting classifier. Classify posts with a primary category and optional secondary categories. Always respond with valid JSON only."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.1,
-            max_tokens=200
+            max_tokens=250
         )
         
         content = response.choices[0].message.content.strip()
@@ -244,10 +249,9 @@ Respond in JSON format only:
         # Parse JSON response
         result = json.loads(content)
         
-        # Validate category is one of the valid ones
+        # Validate primary category
         category = result.get("category", "Other")
         if category not in CATEGORY_LIST:
-            # Try to find a close match
             category_lower = category.lower()
             for valid_cat in CATEGORY_LIST:
                 if valid_cat.lower() in category_lower or category_lower in valid_cat.lower():
@@ -256,8 +260,25 @@ Respond in JSON format only:
             else:
                 category = "Other"
         
+        # Validate secondary categories
+        raw_secondary = result.get("secondary_categories", [])
+        secondary_categories = []
+        if isinstance(raw_secondary, list):
+            for sec in raw_secondary:
+                if sec in CATEGORY_LIST and sec != category:
+                    secondary_categories.append(sec)
+                else:
+                    # Try fuzzy match
+                    sec_lower = sec.lower() if isinstance(sec, str) else ""
+                    for valid_cat in CATEGORY_LIST:
+                        if valid_cat.lower() in sec_lower or sec_lower in valid_cat.lower():
+                            if valid_cat != category and valid_cat not in secondary_categories:
+                                secondary_categories.append(valid_cat)
+                            break
+        
         return {
             "category": category,
+            "secondary_categories": secondary_categories,
             "location": result.get("location", "Unknown"),
             "ai_features": result.get("features", {}),
             "ai_processed": True
@@ -267,6 +288,7 @@ Respond in JSON format only:
         print(f"    [AI CLASSIFY] Error: {str(e)[:50]}")
         return {
             "category": "Other",
+            "secondary_categories": [],
             "location": "Unknown",
             "ai_features": {},
             "ai_processed": False

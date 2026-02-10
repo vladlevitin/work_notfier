@@ -79,7 +79,8 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
             update_post_category(
                 post["post_id"], 
                 post["category"],
-                post.get("location")
+                post.get("location"),
+                post.get("secondary_categories", [])
             )
         return False  # Post already existed
     
@@ -97,6 +98,7 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
         # Use category and location from post if already set (by main.py)
         category = post.get("category", "General")
         location = post.get("location")
+        secondary_categories = post.get("secondary_categories", [])
         
         # Build insert data with basic columns
         insert_data = {
@@ -118,6 +120,11 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
         # Add location if available
         if location:
             insert_data["location"] = location
+        
+        # Add secondary categories as JSON string
+        if secondary_categories:
+            import json as _json
+            insert_data["secondary_categories"] = _json.dumps(secondary_categories)
         
         supabase.table("posts").insert(insert_data).execute()
         return True
@@ -144,9 +151,9 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
             return False
 
 
-def update_post_category(post_id: str, category: str, location: Optional[str] = None) -> bool:
+def update_post_category(post_id: str, category: str, location: Optional[str] = None, secondary_categories: list = None) -> bool:
     """
-    Update the category (and optionally location) for an existing post.
+    Update the category (and optionally location/secondary) for an existing post.
     Used to backfill categories for posts that were saved without one.
     
     Returns True if updated successfully.
@@ -155,12 +162,15 @@ def update_post_category(post_id: str, category: str, location: Optional[str] = 
         update_data: dict = {"category": category}
         if location:
             update_data["location"] = location
+        if secondary_categories:
+            import json as _json
+            update_data["secondary_categories"] = _json.dumps(secondary_categories)
         
         supabase.table("posts").update(update_data).eq("post_id", post_id).execute()
         return True
     except Exception as e:
         # Column might not exist — silently ignore
-        if "category" in str(e).lower():
+        if "category" in str(e).lower() or "secondary" in str(e).lower():
             return False
         print(f"Error updating post category: {e}")
         return False

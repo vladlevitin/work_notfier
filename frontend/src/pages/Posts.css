@@ -329,6 +329,10 @@ body {
 
 .category-tag {
   margin-top: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .category-badge {
@@ -342,6 +346,20 @@ body {
   font-size: 0.7rem;
   font-weight: 600;
   border: 1px solid #d2e3fc;
+}
+
+.category-badge.secondary {
+  background: #f3f4f6;
+  color: #6b7280;
+  border-color: #e5e7eb;
+  font-size: 0.65rem;
+  font-weight: 500;
+}
+
+.secondary-categories {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
 }
 
 .location-tag {
