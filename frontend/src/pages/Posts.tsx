@@ -2,16 +2,12 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { api, Post, Stats } from '../api/client';
 import './Posts.css';
 
-const PAGE_SIZE = 20;
+const MAX_FETCH = 1000;
 
 export function PostsPage() {
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [allPosts, setAllPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [total, setTotal] = useState(0);
-  const [offset, setOffset] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
   const [stats, setStats] = useState<Stats | null>(null);
   const [searchInput, setSearchInput] = useState('');
   const [searchFilter, setSearchFilter] = useState('');
@@ -20,59 +16,29 @@ export function PostsPage() {
   const [locationFilter, setLocationFilter] = useState<string>('');
   const [showOnlyNew, setShowOnlyNew] = useState(false);
   
-  const loadingRef = useRef(false);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const observerTarget = useRef<HTMLDivElement | null>(null);
 
-  // Helper function to get category for a post — uses AI-assigned category only
-  const getPostCategory = (post: Post): string => {
-    return post.category || 'Other';
-  };
-
-  // Load posts
-  const loadPosts = useCallback(async (reset: boolean = false) => {
-    if (loadingRef.current) return;
-    loadingRef.current = true;
-    
-    if (reset) {
-      setOffset(0);
-      setPosts([]);
-      setLoading(true);
-    } else {
-      setLoadingMore(true);
-    }
-    
+  // Load all posts from backend (server handles search + onlyNew, everything else client-side)
+  const loadPosts = useCallback(async () => {
+    setLoading(true);
     setError(null);
     
     try {
-      const currentOffset = reset ? 0 : offset;
-      // Don't send category/location to backend — filter client-side using displayed category
       const response = await api.getPosts(
-        PAGE_SIZE,
-        currentOffset,
-        groupFilter || undefined,
+        MAX_FETCH,
+        0,
+        undefined,
         searchFilter || undefined,
         showOnlyNew
       );
       
-      if (reset) {
-        setPosts(response.posts);
-        setOffset(response.posts.length);
-      } else {
-        setPosts(prev => [...prev, ...response.posts]);
-        setOffset(prev => prev + response.posts.length);
-      }
-      
-      setTotal(response.total);
-      setHasMore(response.posts.length >= PAGE_SIZE && (reset ? response.posts.length : offset + response.posts.length) < response.total);
+      setAllPosts(response.posts);
     } catch (err: any) {
       setError(err.message || 'Failed to load posts');
     } finally {
       setLoading(false);
-      setLoadingMore(false);
-      loadingRef.current = false;
     }
-  }, [offset, groupFilter, searchFilter, showOnlyNew, categoryFilter, locationFilter]);
+  }, [searchFilter, showOnlyNew]);
 
   // Normalize group name: strip "(1) ", "(2) " etc. prefixes
   const normalizeGroupName = (name: string): string => {
@@ -104,71 +70,30 @@ export function PostsPage() {
 
   // Initial load
   useEffect(() => {
-    loadPosts(true);
+    loadPosts();
     loadStats();
   }, []);
 
-  // Reload when filters change
+  // Reload when server-side filters change (search, onlyNew)
   useEffect(() => {
-    loadPosts(true);
-  }, [groupFilter, searchFilter, showOnlyNew, categoryFilter, locationFilter]);
+    loadPosts();
+  }, [searchFilter, showOnlyNew]);
 
-  // Auto-refresh every 2 minutes to sync with monitoring cycles
+  // Auto-refresh every 2 minutes
   useEffect(() => {
-    const AUTO_REFRESH_INTERVAL = 120000; // 2 minutes (120000ms)
-    
-    console.log('Auto-refresh enabled: Dashboard will refresh every 2 minutes');
-    
     const intervalId = setInterval(() => {
-      console.log('Auto-refreshing dashboard...');
-      loadPosts(true);
+      loadPosts();
       loadStats();
-    }, AUTO_REFRESH_INTERVAL);
-
-    // Cleanup interval on component unmount
-    return () => {
-      console.log('Auto-refresh disabled');
-      clearInterval(intervalId);
-    };
-  }, [groupFilter, searchFilter, showOnlyNew, categoryFilter, locationFilter]);
+    }, 120000);
+    return () => clearInterval(intervalId);
+  }, [searchFilter, showOnlyNew]);
 
   // Debounced search
   const handleSearchChange = (value: string) => {
     setSearchInput(value);
-    
-    if (searchDebounceRef.current) {
-      clearTimeout(searchDebounceRef.current);
-    }
-    
-    searchDebounceRef.current = setTimeout(() => {
-      setSearchFilter(value);
-    }, 300);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => setSearchFilter(value), 300);
   };
-
-  // Infinite scroll observer
-  useEffect(() => {
-    if (!hasMore || loading || loadingMore) return;
-    
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && !loading && !loadingMore && hasMore) {
-          loadPosts(false);
-        }
-      },
-      { rootMargin: '300px', threshold: 0.01 }
-    );
-
-    const currentTarget = observerTarget.current;
-    if (currentTarget) {
-      observer.observe(currentTarget);
-    }
-
-    return () => {
-      if (currentTarget) {
-        observer.unobserve(currentTarget);
-      }
-    };
-  }, [loading, loadingMore, hasMore, loadPosts]);
 
   // Format scraped_at date
   const formatDate = (isoString: string): string => {
@@ -227,8 +152,8 @@ export function PostsPage() {
     'Other'
   ];
   
-  // Get unique locations from posts
-  const uniqueLocations = Array.from(new Set(posts.map(p => p.location).filter(Boolean)));
+  // Get unique locations from all posts
+  const uniqueLocations = Array.from(new Set(allPosts.map(p => p.location).filter(Boolean)));
 
   // Get category display with icon — uses AI-assigned category, falls back to keyword matching
   const getCategoryDisplay = (post: Post) => {
@@ -270,9 +195,13 @@ export function PostsPage() {
     return { icon: '📦', name: 'Other' };
   };
 
-  // Client-side filtering by displayed category and location
+  // Client-side filtering — all filters combine as AND conditions
   const displayedPosts = useMemo(() => {
-    return posts.filter((post) => {
+    return allPosts.filter((post) => {
+      if (groupFilter) {
+        const postGroup = normalizeGroupName(post.group_name);
+        if (postGroup !== groupFilter) return false;
+      }
       if (categoryFilter) {
         const displayedCategory = getCategoryDisplay(post).name;
         if (displayedCategory !== categoryFilter) return false;
@@ -282,7 +211,7 @@ export function PostsPage() {
       }
       return true;
     });
-  }, [posts, categoryFilter, locationFilter]);
+  }, [allPosts, groupFilter, categoryFilter, locationFilter]);
 
   return (
     <div className="container">
@@ -295,17 +224,16 @@ export function PostsPage() {
             <span className="stat-label">
               {(groupFilter || categoryFilter || locationFilter || searchFilter || showOnlyNew) ? 'Matching Posts' : 'Total Posts'}
             </span>
-            <span className="stat-value">{(categoryFilter || locationFilter) ? displayedPosts.length : total}</span>
+            <span className="stat-value">{displayedPosts.length}</span>
           </div>
         </div>
         
-        {/* Per-Group Stats Section — dynamically reflects filters */}
+        {/* Per-Group Stats Section — dynamically reflects all filters */}
         {(() => {
           const hasFilters = groupFilter || categoryFilter || locationFilter || searchFilter || showOnlyNew;
-          const postsForStats = (categoryFilter || locationFilter) ? displayedPosts : posts;
           const groupData = hasFilters
             ? Object.entries(
-                postsForStats.reduce<Record<string, number>>((acc, p) => {
+                displayedPosts.reduce<Record<string, number>>((acc, p) => {
                   const name = normalizeGroupName(p.group_name);
                   acc[name] = (acc[name] || 0) + 1;
                   return acc;
@@ -403,7 +331,7 @@ export function PostsPage() {
         <button
           onClick={() => {
             loadStats();
-            loadPosts(true);
+            loadPosts();
           }}
           className="refresh-button"
         >
@@ -492,18 +420,8 @@ export function PostsPage() {
             ))}
           </div>
           
-          {/* Sentinel for infinite scroll */}
-          {hasMore && (
-            <div ref={observerTarget} style={{ height: '100px', opacity: 0 }} aria-hidden="true" />
-          )}
-          
-          {loadingMore && (
-            <div className="loading-more">Loading more posts...</div>
-          )}
-          
           <div className="pagination-info">
-            Showing {displayedPosts.length} of {(categoryFilter || locationFilter) ? displayedPosts.length : total} posts
-            {hasMore && !categoryFilter && !locationFilter && ' (scroll for more)'}
+            Showing {displayedPosts.length} posts
           </div>
         </>
       )}
