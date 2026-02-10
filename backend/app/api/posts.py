@@ -15,7 +15,9 @@ async def list_posts(
     group_url: Optional[str] = Query(default=None),
     group_name: Optional[str] = Query(default=None),
     search: Optional[str] = Query(default=None),
-    only_new: bool = Query(default=False)
+    only_new: bool = Query(default=False),
+    category: Optional[str] = Query(default=None),
+    location: Optional[str] = Query(default=None)
 ):
     """
     Get posts with optional filtering.
@@ -27,6 +29,8 @@ async def list_posts(
         - group_name: Filter by normalized group name
         - search: Search term for title/text
         - only_new: Only return posts not yet notified
+        - category: Filter by category
+        - location: Filter by location
     """
     try:
         posts = get_posts(
@@ -35,14 +39,18 @@ async def list_posts(
             group_url=group_url,
             group_name=group_name,
             search=search,
-            only_new=only_new
+            only_new=only_new,
+            category=category,
+            location=location
         )
         
         total = get_post_count(
             group_url=group_url,
             group_name=group_name,
             search=search,
-            only_new=only_new
+            only_new=only_new,
+            category=category,
+            location=location
         )
         
         return {

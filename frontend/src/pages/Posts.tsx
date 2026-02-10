@@ -232,10 +232,8 @@ export function PostsPage() {
   // Get unique locations from posts
   const uniqueLocations = Array.from(new Set(posts.map(p => p.location).filter(Boolean)));
 
-  // Get category display with icon — uses AI-assigned category only
+  // Get category display with icon — uses AI-assigned category, falls back to keyword matching
   const getCategoryDisplay = (post: Post) => {
-    const category = post.category || 'Other';
-    
     const categoryIcons: Record<string, string> = {
       'Electrical': '⚡',
       'Plumbing': '🔧',
@@ -249,13 +247,29 @@ export function PostsPage() {
       'IT / Tech': '💻',
       'Other': '📦',
     };
-    
-    // Try exact match first, then partial match
-    const icon = categoryIcons[category] || 
-      Object.entries(categoryIcons).find(([key]) => category.includes(key))?.[1] || 
-      '📦';
-    
-    return { icon, name: category };
+
+    // Use AI-assigned category if available
+    if (post.category && post.category !== 'Other' && post.category !== 'General') {
+      const icon = categoryIcons[post.category] || 
+        Object.entries(categoryIcons).find(([key]) => post.category!.includes(key))?.[1] || 
+        '📦';
+      return { icon, name: post.category };
+    }
+
+    // Fallback: keyword-based categorization (same as PostDetail)
+    const content = (post.title + ' ' + post.text).toLowerCase();
+    if (content.match(/(flytte|bære|transport|frakte|hente|kjøre|henger)/)) return { icon: '🚚', name: 'Transport / Moving' };
+    if (content.match(/(male|sparkle|pusse|oppussing|renovere|snekker|gulv|vegg|fliser|tapet)/)) return { icon: '🎨', name: 'Painting / Renovation' };
+    if (content.match(/(vask|rengjøring|utvask|hage|klippe|måke|snø)/)) return { icon: '🧹', name: 'Cleaning / Garden' };
+    if (content.match(/(rørlegger|rør|avløp|toalett|dusj|vann|vvs)/)) return { icon: '🔧', name: 'Plumbing' };
+    if (content.match(/(elektriker|strøm|sikring|lys|stikkontakt|kurs)/)) return { icon: '⚡', name: 'Electrical' };
+    if (content.match(/(montere|demontere|ikea|møbler|skap|seng|hylle|tv.*vegg)/)) return { icon: '🪑', name: 'Assembly / Furniture' };
+    if (content.match(/(bil|motor|bremse|dekk|verksted|mekaniker|eu.*kontroll)/)) return { icon: '🔩', name: 'Car Mechanic' };
+    if (content.match(/(pc|data|mobil|skjerm|printer|wifi|internett|smart.*hjem)/)) return { icon: '💻', name: 'IT / Tech' };
+    if (content.match(/(løfte|bære|tungt|rive|demoler|rydde|kaste)/)) return { icon: '🏗️', name: 'Manual Labor' };
+    if (content.match(/(reparere|fikse|bytte|ordne|småjobb)/)) return { icon: '🔨', name: 'Handyman / Misc' };
+
+    return { icon: '📦', name: 'Other' };
   };
 
   return (

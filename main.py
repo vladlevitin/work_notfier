@@ -160,6 +160,10 @@ persistent_drivers = {}
 # Global reference to current sequential-mode driver (so cleanup can close it on exit/kill)
 _current_driver = None
 
+# Session-level cache of post hashes that were rejected by the AI filter.
+# Prevents re-evaluating the same offers every cycle (hash-ID posts are never saved to DB).
+_rejected_post_hashes: set[str] = set()
+
 
 def is_post_recent(post: dict, max_hours: int = 24, log_skip: bool = True) -> bool:
     """
@@ -175,12 +179,14 @@ def is_post_recent(post: dict, max_hours: int = 24, log_skip: bool = True) -> bo
     
     timestamp_str = post.get("timestamp", "")
     if not timestamp_str:
-        return False
+        # No timestamp at all — assume recent (we just scraped it)
+        return True
     
     try:
         post_time = parse_facebook_timestamp(timestamp_str)
         if not post_time:
-            return False
+            # Timestamp couldn't be parsed — assume recent (don't silently drop posts)
+            return True
         
         cutoff_time = datetime.now() - timedelta(hours=max_hours)
         is_recent = post_time >= cutoff_time
@@ -192,8 +198,8 @@ def is_post_recent(post: dict, max_hours: int = 24, log_skip: bool = True) -> bo
         
         return is_recent
     except Exception:
-        # If we can't parse the timestamp, skip it to be safe
-        return False
+        # If we can't parse the timestamp, assume recent (don't silently drop)
+        return True
 
 # Global flag for graceful shutdown
 shutdown_requested = False
@@ -204,18 +210,41 @@ def clear_database() -> int:
     from src.database.supabase_db import supabase
     
     try:
-        # Get count before deleting
-        count_result = supabase.table("posts").select("*", count="exact", head=True).execute()
+        # Get count before deleting (don't use head=True — it can return None in some client versions)
+        count_result = supabase.table("posts").select("id", count="exact").execute()
         count = count_result.count if count_result.count else 0
         
+        if count == 0:
+            # Double-check by actually fetching a row
+            check = supabase.table("posts").select("id").limit(1).execute()
+            if check.data:
+                count = len(check.data)  # At least 1, proceed with delete
+        
         if count > 0:
-            # Delete all posts
-            supabase.table("posts").delete().neq("post_id", "").execute()
-            print(f"[DB] Cleared {count} posts from database")
+            print(f"[DB] Found {count} posts, deleting...")
+            # Delete all posts in batches to avoid timeouts
+            total_deleted = 0
+            while True:
+                batch = supabase.table("posts").select("post_id").limit(1000).execute()
+                if not batch.data:
+                    break
+                post_ids = [p["post_id"] for p in batch.data]
+                supabase.table("posts").delete().in_("post_id", post_ids).execute()
+                total_deleted += len(post_ids)
+                print(f"[DB] Deleted batch of {len(post_ids)} posts (total: {total_deleted})")
+            
+            # Verify deletion
+            verify = supabase.table("posts").select("id", count="exact").execute()
+            remaining = verify.count if verify.count else 0
+            if remaining == 0:
+                print(f"[DB] Cleared {total_deleted} posts from database ✓")
+            else:
+                print(f"[DB] Warning: {remaining} posts still remaining after delete")
+            
+            return total_deleted
         else:
             print("[DB] Database already empty")
-        
-        return count
+            return 0
     except Exception as e:
         print(f"[ERROR] Failed to clear database: {e}")
         return 0
@@ -308,11 +337,9 @@ def scrape_single_group(group_config: dict, group_idx: int, total_groups: int, o
         posts = scrape_facebook_group(driver, group_url, scroll_steps=scroll_steps)
         result["scraped"] = len(posts)
         
-        # Filter out posts with unknown IDs
-        unknown_count = sum(1 for p in posts if p.get('post_id') == 'unknown')
-        if unknown_count > 0:
-            posts = [p for p in posts if p.get('post_id') != 'unknown']
-            result["skipped_unknown"] = unknown_count
+        # Count hash-based IDs for logging
+        hash_id_count = sum(1 for p in posts if p.get('post_id', '').startswith('h_'))
+        result["skipped_unknown"] = hash_id_count  # Track for stats (not actually skipped)
         
         # Filter out existing posts
         existing_count = 0
@@ -527,11 +554,9 @@ def scrape_group_with_persistent_driver(driver, group_config: dict, group_idx: i
         posts = scrape_facebook_group(driver, group_url, scroll_steps=scroll_steps)
         result["scraped"] = len(posts)
         
-        # Filter out posts with unknown IDs
-        unknown_count = sum(1 for p in posts if p.get('post_id') == 'unknown')
-        if unknown_count > 0:
-            posts = [p for p in posts if p.get('post_id') != 'unknown']
-            result["skipped_unknown"] = unknown_count
+        # Count hash-based IDs for logging
+        hash_id_count = sum(1 for p in posts if p.get('post_id', '').startswith('h_'))
+        result["skipped_unknown"] = hash_id_count  # Track for stats (not actually skipped)
         
         # Filter out existing posts
         existing_count = 0
@@ -686,7 +711,7 @@ def run_scrape_cycle_persistent(facebook_groups: list, openai_ok: bool, cycle_nu
     print(f"CYCLE {cycle_num} COMPLETE | {cycle_duration}s | {num_groups} groups simultaneously")
     print(f"{'='*80}")
     print(f"  Scraped: {total_stats['scraped']:>4} posts from {num_groups} groups")
-    print(f"  Skipped: {total_stats['skipped_unknown']:>4} unknown | {total_stats['skipped_existing']:>4} in DB | {total_stats['skipped_offers']:>4} offers")
+    print(f"  Skipped: {total_stats['skipped_unknown']:>4} hash-ID | {total_stats['skipped_existing']:>4} in DB | {total_stats['skipped_offers']:>4} offers")
     print(f"  Saved:   {total_stats['new_saved']:>4} new posts")
     if total_stats["errors"] > 0:
         print(f"  Errors:  {total_stats['errors']:>4} groups failed")
@@ -767,7 +792,7 @@ def run_scrape_cycle_parallel(facebook_groups: list, openai_ok: bool, cycle_num:
     print(f"CYCLE {cycle_num} COMPLETE | {cycle_duration:.0f}s | {num_groups} groups in parallel")
     print(f"{'='*80}")
     print(f"  Scraped: {total_stats['scraped']:>4} posts from {num_groups} groups")
-    print(f"  Skipped: {total_stats['skipped_unknown']:>4} unknown | {total_stats['skipped_existing']:>4} in DB | {total_stats['skipped_offers']:>4} offers")
+    print(f"  Skipped: {total_stats['skipped_unknown']:>4} hash-ID | {total_stats['skipped_existing']:>4} in DB | {total_stats['skipped_offers']:>4} offers")
     print(f"  Saved:   {total_stats['new_saved']:>4} new posts")
     if total_stats['notified']:
         print(f"  Emails:  {total_stats['notified']:>4} notifications sent")
@@ -881,11 +906,9 @@ def run_scrape_cycle_multitab(driver, facebook_groups: list, openai_ok: bool, cy
             scraped_count = len(posts)
             total_stats["scraped"] += scraped_count
             
-            # Filter out unknown IDs
-            unknown_count = sum(1 for p in posts if p.get('post_id') == 'unknown')
-            if unknown_count > 0:
-                posts = [p for p in posts if p.get('post_id') != 'unknown']
-                total_stats["skipped_unknown"] += unknown_count
+            # Count hash-based IDs for logging
+            hash_id_count = sum(1 for p in posts if p.get('post_id', '').startswith('h_'))
+            total_stats["skipped_unknown"] += hash_id_count  # Track for stats
             
             # Filter out existing posts
             existing_count = 0
@@ -901,8 +924,13 @@ def run_scrape_cycle_multitab(driver, facebook_groups: list, openai_ok: bool, cy
                 posts = new_posts_only
             
             print(f"found {scraped_count}", end="")
-            if unknown_count > 0 or existing_count > 0:
-                print(f" (skip: {unknown_count} unknown, {existing_count} in DB)", end="")
+            if hash_id_count > 0 or existing_count > 0:
+                parts = []
+                if hash_id_count > 0:
+                    parts.append(f"{hash_id_count} hash-ID")
+                if existing_count > 0:
+                    parts.append(f"{existing_count} in DB")
+                print(f" ({', '.join(parts)})", end="")
             print(f" -> {len(posts)} new")
             
             # Filter old posts first
@@ -980,7 +1008,7 @@ def run_scrape_cycle_multitab(driver, facebook_groups: list, openai_ok: bool, cy
     print(f"CYCLE {cycle_num} COMPLETE | {cycle_duration:.0f}s | multi-tab mode")
     print(f"{'='*80}")
     print(f"  Scraped: {total_stats['scraped']:>4} posts from {len(facebook_groups)} groups")
-    print(f"  Skipped: {total_stats['skipped_unknown']:>4} unknown ID | {total_stats['skipped_existing']:>4} already in DB | {total_stats['skipped_offers']:>4} service offers")
+    print(f"  Skipped: {total_stats['skipped_unknown']:>4} hash-ID | {total_stats['skipped_existing']:>4} already in DB | {total_stats['skipped_offers']:>4} service offers")
     print(f"  Saved:   {total_stats['new_saved']:>4} new posts to database")
     if total_stats['notified']:
         print(f"  Emails:  {total_stats['notified']:>4} notifications sent")
@@ -1041,11 +1069,8 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
         scraped_count = len(posts)
         all_scraped_posts.extend(posts)
         
-        # Filter out posts with unknown IDs (can't be properly tracked)
-        unknown_count = sum(1 for p in posts if p.get('post_id') == 'unknown')
-        if unknown_count > 0:
-            posts = [p for p in posts if p.get('post_id') != 'unknown']
-            skipped_unknown += unknown_count
+        # Count posts with hash-based IDs (no URL-extracted ID found)
+        hash_id_count = sum(1 for p in posts if p.get('post_id', '').startswith('h_'))
         
         # EARLY CHECK: Filter out posts that already exist in database
         existing_count = 0
@@ -1061,27 +1086,43 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
             posts = new_posts_only
         
         print(f"found {scraped_count}", end="")
-        if unknown_count > 0 or existing_count > 0:
-            print(f" (skip: {unknown_count} unknown, {existing_count} in DB)", end="")
+        if hash_id_count > 0 or existing_count > 0:
+            parts = []
+            if hash_id_count > 0:
+                parts.append(f"{hash_id_count} hash-ID")
+            if existing_count > 0:
+                parts.append(f"{existing_count} in DB")
+            print(f" ({', '.join(parts)})", end="")
         print(f" -> {len(posts)} new")
         
         # ==========================================================================
         # STEP 1: Filter out SERVICE OFFERS first (keep only requests)
         # ==========================================================================
         offers_count = 0
+        cached_skip_count = 0
         if openai_ok and posts:
             print(f"    Filtering offers...", end=" ", flush=True)
             filtered_posts = []
             
             for post in posts:
+                post_hash = post.get('post_id', '')
+                # Check session cache first — avoids re-evaluating the same rejected posts every cycle
+                if post_hash in _rejected_post_hashes:
+                    cached_skip_count += 1
+                    offers_count += 1
+                    continue
+                
                 if is_service_request(post.get('title', ''), post.get('text', '')):
                     filtered_posts.append(post)
                 else:
                     offers_count += 1
+                    # Cache the rejection so we don't re-evaluate next cycle
+                    _rejected_post_hashes.add(post_hash)
             
             skipped_offers += offers_count
             posts = filtered_posts
-            print(f"kept {len(posts)} requests, removed {offers_count} offers")
+            cache_note = f" ({cached_skip_count} cached)" if cached_skip_count > 0 else ""
+            print(f"kept {len(posts)} requests, removed {offers_count} offers{cache_note}")
         
         # Filter out old posts BEFORE processing
         if posts:
@@ -1164,7 +1205,7 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
     print(f"CYCLE {cycle_num} COMPLETE | {cycle_duration:.0f}s")
     print(f"{'='*80}")
     print(f"  Scraped: {len(all_scraped_posts):>4} posts from {len(facebook_groups)} groups")
-    print(f"  Skipped: {skipped_unknown:>4} unknown ID | {skipped_existing:>4} already in DB | {skipped_offers:>4} service offers")
+    print(f"  Skipped: {skipped_unknown:>4} hash-ID | {skipped_existing:>4} already in DB | {skipped_offers:>4} service offers")
     print(f"  Saved:   {len(all_new_posts):>4} new posts to database")
     print(f"  Matches: {len(all_relevant_posts):>4} posts match keywords")
     if new_relevant_posts:

@@ -56,39 +56,72 @@ export function PostDetailPage() {
     return post.timestamp;
   };
 
-  // Get category display with icon
-  const getCategoryDisplay = (post: Post) => {
-    if (post.category) {
-      const categoryIcons: Record<string, string> = {
-        'Transport': '🚚',
-        'Moving': '🚚',
-        'Painting': '🎨',
-        'Renovation': '🎨',
-        'Cleaning': '🧹',
-        'Garden': '🧹',
-        'Plumbing': '🔧',
-        'Electrical': '🔧',
-        'Assembly': '🪑',
-        'Furniture': '🪑',
-        'General': '📦'
-      };
-      
-      const icon = Object.entries(categoryIcons).find(([key]) => 
-        post.category?.includes(key)
-      )?.[1] || '📦';
-      
-      return { icon, name: post.category };
+  // Get direct post URL - construct from post_id if the stored URL is just the group URL
+  const getPostUrl = (post: Post): string => {
+    // If the stored URL already points to a specific post, use it
+    if (post.url && post.url !== post.group_url && 
+        (post.url.includes('/posts/') || post.url.includes('/permalink/') || post.url.includes('story_fbid='))) {
+      return post.url;
     }
     
+    // Try to construct a direct post URL from the post_id
+    // Only works for numeric post IDs or pfbid format (not hash-based h_ IDs)
+    if (post.post_id && !post.post_id.startsWith('h_')) {
+      // Extract group ID from group_url
+      const groupIdMatch = post.group_url.match(/\/groups\/(\d+)/);
+      if (groupIdMatch) {
+        return `https://www.facebook.com/groups/${groupIdMatch[1]}/posts/${post.post_id}`;
+      }
+    }
+    
+    // Fallback to stored URL (may be group URL for hash-ID posts)
+    return post.url;
+  };
+
+  // Check if we have a direct link to the post (not just the group)
+  const hasDirectPostUrl = (post: Post): boolean => {
+    const url = getPostUrl(post);
+    return url !== post.group_url;
+  };
+
+  // Get category display with icon — uses AI-assigned category, falls back to keyword matching
+  const getCategoryDisplay = (post: Post) => {
+    const categoryIcons: Record<string, string> = {
+      'Electrical': '⚡',
+      'Plumbing': '🔧',
+      'Transport / Moving': '🚚',
+      'Manual Labor': '🏗️',
+      'Painting / Renovation': '🎨',
+      'Cleaning / Garden': '🧹',
+      'Assembly / Furniture': '🪑',
+      'Car Mechanic': '🔩',
+      'Handyman / Misc': '🔨',
+      'IT / Tech': '💻',
+      'Other': '📦',
+    };
+
+    // Use AI-assigned category if available
+    if (post.category && post.category !== 'Other' && post.category !== 'General') {
+      const icon = categoryIcons[post.category] || 
+        Object.entries(categoryIcons).find(([key]) => post.category!.includes(key))?.[1] || 
+        '📦';
+      return { icon, name: post.category };
+    }
+
     // Fallback: keyword-based categorization
     const content = (post.title + ' ' + post.text).toLowerCase();
-    if (content.match(/(flytte|bære|transport|frakte|hente|kjøre|bil|henger)/)) return { icon: '🚚', name: 'Transport / Moving' };
-    if (content.match(/(male|sparkle|pusse|oppussing|renovere|snekker|gulv|vegg)/)) return { icon: '🎨', name: 'Painting / Renovation' };
+    if (content.match(/(flytte|bære|transport|frakte|hente|kjøre|henger)/)) return { icon: '🚚', name: 'Transport / Moving' };
+    if (content.match(/(male|sparkle|pusse|oppussing|renovere|snekker|gulv|vegg|fliser|tapet)/)) return { icon: '🎨', name: 'Painting / Renovation' };
     if (content.match(/(vask|rengjøring|utvask|hage|klippe|måke|snø)/)) return { icon: '🧹', name: 'Cleaning / Garden' };
-    if (content.match(/(rørlegger|elektriker|strøm|vann|vvs|lys)/)) return { icon: '🔧', name: 'Plumbing / Electrical' };
-    if (content.match(/(montere|demontere|ikea|møbler|skap|seng|sofa)/)) return { icon: '🪑', name: 'Assembly / Furniture' };
-    
-    return { icon: '📦', name: 'General' };
+    if (content.match(/(rørlegger|rør|avløp|toalett|dusj|vann|vvs)/)) return { icon: '🔧', name: 'Plumbing' };
+    if (content.match(/(elektriker|strøm|sikring|lys|stikkontakt|kurs)/)) return { icon: '⚡', name: 'Electrical' };
+    if (content.match(/(montere|demontere|ikea|møbler|skap|seng|hylle|tv.*vegg)/)) return { icon: '🪑', name: 'Assembly / Furniture' };
+    if (content.match(/(bil|motor|bremse|dekk|verksted|mekaniker|eu.*kontroll)/)) return { icon: '🔩', name: 'Car Mechanic' };
+    if (content.match(/(pc|data|mobil|skjerm|printer|wifi|internett|smart.*hjem)/)) return { icon: '💻', name: 'IT / Tech' };
+    if (content.match(/(løfte|bære|tungt|rive|demoler|rydde|kaste)/)) return { icon: '🏗️', name: 'Manual Labor' };
+    if (content.match(/(reparere|fikse|bytte|ordne|småjobb)/)) return { icon: '🔨', name: 'Handyman / Misc' };
+
+    return { icon: '📦', name: 'Other' };
   };
 
   if (loading) {
@@ -199,12 +232,12 @@ export function PostDetailPage() {
         {/* Action Buttons */}
         <div className="detail-actions">
           <a 
-            href={post.url} 
+            href={getPostUrl(post)} 
             target="_blank" 
             rel="noopener noreferrer"
             className="primary-button"
           >
-            🔗 View on Facebook
+            🔗 {hasDirectPostUrl(post) ? 'View Post on Facebook' : 'View on Facebook (Group)'}
           </a>
           
           <a 

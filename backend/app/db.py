@@ -158,7 +158,9 @@ def get_posts(
     group_url: Optional[str] = None,
     group_name: Optional[str] = None,
     search: Optional[str] = None,
-    only_new: bool = False
+    only_new: bool = False,
+    category: Optional[str] = None,
+    location: Optional[str] = None
 ) -> list[dict]:
     """
     Retrieve posts from the database with optional filtering.
@@ -170,6 +172,8 @@ def get_posts(
         group_name: Filter by normalized group name
         search: Search term to filter posts (searches title and text)
         only_new: Only return posts that haven't been notified about
+        category: Filter by category
+        location: Filter by location
     
     Returns:
         List of post dictionaries sorted by Facebook timestamp (most recent first)
@@ -186,6 +190,12 @@ def get_posts(
         
         if only_new:
             query = query.eq("notified", False)
+        
+        if category:
+            query = query.eq("category", category)
+        
+        if location:
+            query = query.ilike("location", f"%{location}%")
         
         # Fetch all matching posts (we'll sort in Python by parsed timestamp)
         result = query.execute()
@@ -218,7 +228,9 @@ def get_post_count(
     group_url: Optional[str] = None,
     group_name: Optional[str] = None,
     search: Optional[str] = None,
-    only_new: bool = False
+    only_new: bool = False,
+    category: Optional[str] = None,
+    location: Optional[str] = None
 ) -> int:
     """Get total count of posts matching the filters."""
     try:
@@ -229,6 +241,10 @@ def get_post_count(
                 query = query.or_(f"title.ilike.%{search}%,text.ilike.%{search}%")
             if only_new:
                 query = query.eq("notified", False)
+            if category:
+                query = query.eq("category", category)
+            if location:
+                query = query.ilike("location", f"%{location}%")
             result = query.execute()
             return sum(1 for p in (result.data or []) if normalize_group_name(p.get("group_name", "")) == group_name)
         
@@ -242,6 +258,12 @@ def get_post_count(
         
         if only_new:
             query = query.eq("notified", False)
+        
+        if category:
+            query = query.eq("category", category)
+        
+        if location:
+            query = query.ilike("location", f"%{location}%")
         
         result = query.execute()
         return result.count if result.count else 0

@@ -16,13 +16,16 @@ load_dotenv()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+# Model to use for all AI calls (must be a valid OpenAI model)
+AI_MODEL = "gpt-4o-mini"
+
 # Define available categories with descriptions for AI classification
 CATEGORIES = {
     "Electrical": "Electrician work, wiring, lights, mirrors with electrical connections, outlets, fuse boxes, stove guards",
     "Plumbing": "Pipes, water, drains, toilets, sinks, showers, bathrooms (water-related)",
-    "Transport / Moving": "Physically moving/transporting ITEMS or FURNITURE from place A to place B, helping someone relocate, pickup/delivery of items, needing a moving van, lifting and carrying items to move them. The vehicle is the TOOL for transport, NOT the thing being worked on",
+    "Transport / Moving": "ONLY for physically moving/transporting ITEMS or FURNITURE from place A to place B, helping someone relocate, pickup/delivery of items, needing a moving van. NOT for building, constructing, or assembling things even if the words 'carry' or 'foldable' appear",
     "Manual Labor": "Heavy lifting, carrying heavy items, physical work, loading/unloading, demolition, removal work, outdoor physical labor - no qualifications required",
-    "Painting / Renovation": "Painting walls, spackling, wallpaper, renovation, construction work, tiling (fliser), carpentry, demolition, removing walls or structures",
+    "Painting / Renovation": "Painting walls, spackling, wallpaper, renovation, construction work, tiling (fliser), carpentry (snekker), building/constructing custom items or structures, woodwork, demolition, removing walls or structures",
     "Cleaning / Garden": "House cleaning, garden work, lawn care, window washing, snow removal",
     "Assembly / Furniture": "IKEA assembly, furniture mounting, shelves, TV mounting, disassembly",
     "Car Mechanic": "Any mechanical/repair work ON a vehicle (car, truck/lastebil, van, motorcycle): brakes, engine, tire changes, inspections, diagnostics, car sounds/noises. If someone needs work DONE ON the vehicle itself, it's Car Mechanic",
@@ -34,45 +37,126 @@ CATEGORIES = {
 CATEGORY_LIST = list(CATEGORIES.keys())
 
 
+def _is_obvious_offer(title: str, text: str) -> bool:
+    """
+    Fast deterministic pre-filter to catch obvious service OFFERS before calling AI.
+    Returns True if the post is clearly an offer/advertisement (should be filtered out).
+    Returns False if uncertain — let the AI decide.
+    
+    This catches patterns that gpt-4o-mini repeatedly misclassifies.
+    """
+    import re as _re
+    
+    combined = f"{title}\n{text}".lower()
+    
+    # --- Pattern 1: "Trenger du/dere/noen hjelp" = asking if YOU need help = OFFER ---
+    # "Trenger noen hjelp til å vaske huset?" / "Trenger du hjelp med flytting?"
+    if _re.search(r'trenger\s+(du|dere|noen)\s+hjelp', combined):
+        return True
+    
+    # --- Pattern 2: "Tilbyr" / "utfører" / "vi fikser" / "jeg kan" service language ---
+    offer_verbs = [
+        r'\b(vi|jeg)\s+(tilbyr|utfører|fikser|ordner|gjør|kan hjelpe)',
+        r'\b(tilbyr|utfører)\s+\w+',
+        r'\bvi\s+kan\s+hjelpe\s+deg',
+        r'\bjeg\s+kan\s+hjelpe\s+deg',
+    ]
+    for pattern in offer_verbs:
+        if _re.search(pattern, combined):
+            return True
+    
+    # --- Pattern 3: Short post + "send pm/melding" + no specific task ---
+    # Offers are typically short and just say "contact me"
+    is_short = len(combined) < 200
+    has_contact_invite = bool(_re.search(r'send\s*(gjerne\s*)?(en\s*)?(pm|melding|msg|dm)', combined))
+    has_specific_task = bool(_re.search(r'(trenger\s+hjelp\s+(med|til)\b(?!.*\?))', combined))  # "trenger hjelp med/til" NOT ending in ?
+    
+    if is_short and has_contact_invite and not has_specific_task:
+        return True
+    
+    # --- Pattern 4: Job seeker patterns ---
+    job_seeker_patterns = [
+        r'søk(er|nad)\s+(om\s+)?jobb',
+        r'leter\s+etter\s+(en\s+)?jobb',
+        r'på\s+utkikk\s+etter\s+(en\s+)?(ny\s+)?jobb',
+        r'looking\s+for\s+(a\s+)?(new\s+)?job',
+        r'available\s+for\s+work',
+        r'ledig\s+for\s+oppdrag',
+    ]
+    for pattern in job_seeker_patterns:
+        if _re.search(pattern, combined):
+            return True
+    
+    return False
+
+
 def is_service_request(title: str, text: str) -> bool:
     """
-    Use AI to determine if a post is a SERVICE REQUEST (someone needs help)
+    Determine if a post is a SERVICE REQUEST (someone needs help)
     vs a SERVICE OFFER (someone offering their services).
     
-    This is 100% AI-driven — no keyword matching.
+    Uses a fast deterministic pre-filter first, then falls back to AI.
     
     Returns True if it's a request for service (we want to keep these).
     Returns False if it's an offer/advertisement (we want to filter these out).
     """
+    # Fast pre-filter: catch obvious offers without calling AI
+    if _is_obvious_offer(title, text):
+        print(f"    [AI FILTER] Rejected as OFFER (pre-filter)")
+        return False
+    
     content = f"{title}\n{text}"
     
     try:
         response = client.chat.completions.create(
-            model="gpt-5.2-chat-latest",
+            model=AI_MODEL,
             messages=[
-                {"role": "system", "content": """You are an expert at analyzing Norwegian/English job postings from Facebook groups. Your job is to determine whether a post is someone ASKING for a service (REQUEST) or someone OFFERING/ADVERTISING a service (OFFER).
+                {"role": "system", "content": """You are an expert at analyzing Norwegian/English job postings from Facebook groups. Your job is to determine whether a post is someone ASKING for a service (REQUEST) or someone OFFERING/ADVERTISING a service or SEEKING EMPLOYMENT (OFFER).
 
-OFFER (return "OFFER") — The poster is OFFERING or ADVERTISING their services to others:
+OFFER (return "OFFER") — The poster is OFFERING services, ADVERTISING themselves, or SEEKING EMPLOYMENT:
 - They describe what services THEY can provide
 - They list their skills, qualifications, experience, or equipment
 - They mention prices, rates, or competitive pricing
-- They invite people to contact them for services
-- They ask rhetorical questions like "Trenger du hjelp?" (Do you need help?) followed by what they can do
+- They invite people to contact them for services ("send PM", "ta kontakt", "ring meg")
+- They ask rhetorical questions like "Trenger du/noen hjelp?" (Do you/anyone need help?) — this is advertising, NOT requesting
 - They use language like "Vi/Jeg tilbyr...", "Vi/Jeg utfører...", "Vi/Jeg kan...", "Vi fikser..."
 - They describe their business, company, or professional background
 - They list MULTIPLE services they provide
+- They cover a WIDE geographic area (e.g. "Oslo og omegn", "Østfold & Oslo") — real requests are at a specific address/location
 - Companies looking to HIRE workers for their business
+- **JOB SEEKERS**: Someone LOOKING FOR WORK, applying for a job, seeking employment ("søker jobb", "søknad om jobb", "leter etter jobb", "på utkikk etter jobb", "looking for work")
+- **CV/RESUME posts**: Someone presenting themselves, their experience, and contact info to get hired
+- People saying "I can do X, Y, Z — contact me" or "I'm available for work"
+- People describing themselves and asking others to hire them
+- Short/vague posts that just advertise a service without a specific task (e.g. "Need cleaning? Send PM")
 
 REQUEST (return "REQUEST") — The poster NEEDS someone to do a specific job for them:
-- They describe a specific task they need done
-- They are asking for help with something concrete
+- They describe a SPECIFIC task they need done (e.g., "need help moving a sofa", "need a plumber for my bathroom", "looking for someone to paint my apartment")
+- They mention a SPECIFIC location where the work needs to happen (an address, building, apartment, specific neighborhood)
 - They use language like "Trenger hjelp med...", "Ser etter noen som kan...", "Noen som kan...?"
 - They are an individual person needing a specific service performed
-- They ask for price quotes or availability
+- They ask for price quotes or availability FOR A SPECIFIC JOB
+- The post contains DETAILS about the job (dimensions, materials, what exactly needs to be done)
 
-KEY DISTINCTION: "Trenger du hjelp med...?" (Do YOU need help?) = OFFER (advertising to customers). "Trenger hjelp med..." (Need help with...) = REQUEST (asking for help).
+KEY DISTINCTIONS:
+- "Trenger du/noen hjelp med...?" (Do you/someone need help with...?) = OFFER (advertising to potential customers)
+- "Trenger noen hjelp til å vaske huset?" = OFFER (asking if anyone needs cleaning — they're offering the service)
+- "Trenger hjelp med..." / "Trenger hjelp til..." (I need help with...) = REQUEST (the poster needs help)
+- "Søker jobb" / "Leter etter jobb" / "Søknad om jobb" = OFFER (seeking employment)
+- "Jeg kan gjøre X" (I can do X) = OFFER (advertising skills)
+- "Trenger noen til å gjøre X" (Need someone to do X) = REQUEST (looking for a worker)
+- Short post + "send PM" + wide area = OFFER (advertising)
+- Detailed post + specific location + specific task = REQUEST (genuine job)
 
-When in doubt, classify as OFFER — we only want genuine requests where someone needs a job done.
+When in doubt, classify as OFFER — we only want genuine requests where someone needs a specific job done.
+
+EXAMPLES:
+- "Trenger noen hjelp til å vaske huset? Østfold & Oslo og omegn. Send gjerne en pm" → OFFER (asking if anyone needs cleaning, advertising)
+- "Hei! Vi utfører alt av maling, sparkling og tapetsering. Ta kontakt!" → OFFER (advertising services)
+- "Søknad om jobb. Mitt navn er X, jeg har erfaring med Y..." → OFFER (job seeker)
+- "Trenger hjelp med å flytte en sofa fra 3. etasje ned til bilen. Bor på Grünerløkka." → REQUEST (specific task, specific location)
+- "Noen som kan skifte registerreim på en Peugeot 106?" → REQUEST (specific task needed)
+- "Hei! Trenger hjelp til å legge gips i et kjellerrom over panel" → REQUEST (specific task)
 
 Respond with ONLY one word: REQUEST or OFFER"""},
                 {"role": "user", "content": content}
@@ -121,11 +205,18 @@ Post Title: {title}
 Post Content: {text}
 
 Instructions:
-- Choose the single MOST SPECIFIC category that best matches the post.
+- Choose the single MOST SPECIFIC category that best matches the PRIMARY TASK described in the post.
 - "Car Mechanic" is for work DONE ON a vehicle (repairs, brakes, tires, engine, inspections).
-- "Transport / Moving" is for physically moving/transporting ITEMS from one place to another, or helping someone relocate. The vehicle is the tool, not the subject.
+- "Transport / Moving" is ONLY for physically moving/transporting items from place A to place B, or helping someone relocate. Do NOT classify as Transport just because the post mentions carrying, folding, or portable items — focus on what the person NEEDS DONE.
+- "Painting / Renovation" covers carpentry (snekker), building custom items, woodwork, construction — if someone needs something BUILT or CONSTRUCTED, it goes here.
+- "Assembly / Furniture" is for assembling pre-made/flat-pack items (IKEA, shelves, TV mounting).
 - Use "Other" for posts that genuinely don't fit any specific category (e.g. crowdfunding, pet care, tutoring).
 - Extract the location if mentioned (city, area, or district name).
+
+EXAMPLES:
+- Building foldable backdrop/wall panels by a carpenter → "Painting / Renovation" (carpentry/construction, NOT transport)
+- Moving a sofa from apartment A to apartment B → "Transport / Moving"
+- Assembling IKEA furniture → "Assembly / Furniture"
 
 Respond in JSON format only:
 {{
@@ -139,7 +230,7 @@ Respond in JSON format only:
 }}"""
 
         response = client.chat.completions.create(
-            model="gpt-5.2-chat-latest",
+            model=AI_MODEL,
             messages=[
                 {"role": "system", "content": "You are a Norwegian job posting classifier. Classify posts into the most specific matching category. Always respond with valid JSON only."},
                 {"role": "user", "content": prompt}
@@ -195,7 +286,7 @@ def is_driving_job(title: str, text: str) -> bool:
     
     try:
         response = client.chat.completions.create(
-            model="gpt-5.2-chat-latest",
+            model=AI_MODEL,
             messages=[
                 {"role": "system", "content": """Determine if this post is a REQUEST for MOVING or TRANSPORT help.
 
@@ -239,7 +330,7 @@ def is_manual_labor_job(title: str, text: str) -> bool:
     
     try:
         response = client.chat.completions.create(
-            model="gpt-5.2-chat-latest",
+            model=AI_MODEL,
             messages=[
                 {"role": "system", "content": """Determine if this post is requesting MANUAL LABOR / PHYSICAL WORK.
 

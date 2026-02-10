@@ -74,6 +74,13 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
     existing = get_existing_post(post["post_id"])
     
     if existing:
+        # Post already exists — but update its category/location if missing
+        if post.get("category") and not existing.get("category"):
+            update_post_category(
+                post["post_id"], 
+                post["category"],
+                post.get("location")
+            )
         return False  # Post already existed
     
     try:
@@ -135,6 +142,28 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
                 return False
         else:
             return False
+
+
+def update_post_category(post_id: str, category: str, location: Optional[str] = None) -> bool:
+    """
+    Update the category (and optionally location) for an existing post.
+    Used to backfill categories for posts that were saved without one.
+    
+    Returns True if updated successfully.
+    """
+    try:
+        update_data: dict = {"category": category}
+        if location:
+            update_data["location"] = location
+        
+        supabase.table("posts").update(update_data).eq("post_id", post_id).execute()
+        return True
+    except Exception as e:
+        # Column might not exist — silently ignore
+        if "category" in str(e).lower():
+            return False
+        print(f"Error updating post category: {e}")
+        return False
 
 
 def save_posts(posts: list[Post]) -> tuple[int, int]:
