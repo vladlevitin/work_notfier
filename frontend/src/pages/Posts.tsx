@@ -283,24 +283,39 @@ export function PostsPage() {
             <span className="stat-label">
               {(groupFilter || categoryFilter || locationFilter || searchFilter || showOnlyNew) ? 'Matching Posts' : 'Total Posts'}
             </span>
-            <span className="stat-value highlight">{total}</span>
+            <span className="stat-value">{total}</span>
           </div>
         </div>
         
-        {/* Per-Group Stats Section */}
-        {stats?.by_group && stats.by_group.length > 0 && (
-          <div className="stats-bar stats-groups">
-            <div className="stats-groups-header">Posts by Group</div>
-            <div className="stats-groups-grid">
-              {stats.by_group.map(group => (
-                <div key={group.group} className="stat-item-group">
-                  <span className="stat-group-name">{group.group}</span>
-                  <span className="stat-group-count">{group.count}</span>
-                </div>
-              ))}
+        {/* Per-Group Stats Section — dynamically reflects filters */}
+        {(() => {
+          const hasFilters = groupFilter || categoryFilter || locationFilter || searchFilter || showOnlyNew;
+          const groupData = hasFilters
+            ? Object.entries(
+                posts.reduce<Record<string, number>>((acc, p) => {
+                  const name = normalizeGroupName(p.group_name);
+                  acc[name] = (acc[name] || 0) + 1;
+                  return acc;
+                }, {})
+              )
+                .map(([group, count]) => ({ group, count }))
+                .sort((a, b) => b.count - a.count)
+            : stats?.by_group || [];
+
+          return groupData.length > 0 ? (
+            <div className="stats-bar stats-groups">
+              <div className="stats-groups-header">Posts by Group</div>
+              <div className="stats-groups-grid">
+                {groupData.map(group => (
+                  <div key={group.group} className="stat-item-group">
+                    <span className="stat-group-name">{group.group}</span>
+                    <span className="stat-group-count">{group.count}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          ) : null;
+        })()}
       </div>
 
       <div className="filters">
