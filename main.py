@@ -953,6 +953,7 @@ def run_scrape_cycle_multitab(driver, facebook_groups: list, openai_ok: bool, cy
                         if VERBOSE_OUTPUT:
                             print(f"      [REQUEST] {title[:60]}")
                             print(f"        Text: {text[:150]}{'...' if len(text) > 150 else ''}")
+                            print(f"        Link: {post.get('url', 'N/A')}")
                     else:
                         total_stats["skipped_offers"] += 1
                         if VERBOSE_OUTPUT:
@@ -987,6 +988,7 @@ def run_scrape_cycle_multitab(driver, facebook_groups: list, openai_ok: bool, cy
                     print(f"       {title[:70]}")
                     if VERBOSE_OUTPUT:
                         print(f"       Text: {text[:200]}{'...' if len(text) > 200 else ''}")
+                        print(f"       Link: {post.get('url', 'N/A')}")
                     
                     # Send email if category matches
                     if category in EMAIL_CATEGORIES:
@@ -1145,6 +1147,7 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
                     if VERBOSE_OUTPUT:
                         print(f"      [REQUEST] {title[:60]}")
                         print(f"        Text: {text[:150]}{'...' if len(text) > 150 else ''}")
+                        print(f"        Link: {post.get('url', 'N/A')}")
                 else:
                     offers_count += 1
                     # Cache the rejection so we don't re-evaluate next cycle
@@ -1208,6 +1211,7 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
                 print(f"       {title[:70]}")
                 if VERBOSE_OUTPUT:
                     print(f"       Text: {text[:200]}{'...' if len(text) > 200 else ''}")
+                    print(f"       Link: {post.get('url', 'N/A')}")
                 
                 # Send email if category matches
                 if category in EMAIL_CATEGORIES:

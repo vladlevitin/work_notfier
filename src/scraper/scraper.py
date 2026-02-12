@@ -874,6 +874,12 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
                     hash_input = f"{group_url}:{text[:200]}"
                     post_id = "h_" + hashlib.md5(hash_input.encode('utf-8')).hexdigest()[:16]
                 
+                # Construct direct post URL if we have a real post_id but URL is still the group URL
+                if url == group_url and not post_id.startswith('h_'):
+                    group_id_match = re.search(r'/groups/(\d+)', group_url)
+                    if group_id_match:
+                        url = f"https://www.facebook.com/groups/{group_id_match.group(1)}/posts/{post_id}"
+                
                 dict_key = post_id
                 
                 if dict_key not in posts_dict:
@@ -1163,6 +1169,12 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
             if post_id == "unknown":
                 hash_input = f"{group_url}:{text[:200]}"
                 post_id = "h_" + hashlib.md5(hash_input.encode('utf-8')).hexdigest()[:16]
+            
+            # Construct direct post URL if we have a real post_id but URL is still the group URL
+            if url == group_url and not post_id.startswith('h_'):
+                group_id_match = re.search(r'/groups/(\d+)', group_url)
+                if group_id_match:
+                    url = f"https://www.facebook.com/groups/{group_id_match.group(1)}/posts/{post_id}"
             
             dict_key = post_id
             
