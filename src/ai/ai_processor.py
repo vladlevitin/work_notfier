@@ -22,8 +22,8 @@ AI_MODEL = "gpt-4o-mini"
 # Define available categories with descriptions for AI classification
 CATEGORIES = {
     "Electrical": "Electrician work, wiring, lights, mirrors with electrical connections, outlets, fuse boxes, stove guards",
-    "Plumbing": "Pipes, water, drains, toilets, sinks, showers, bathrooms (water-related)",
-    "Transport / Moving": "ONLY for physically moving/transporting ITEMS or FURNITURE from place A to place B, helping someone relocate, pickup/delivery of items, needing a moving van. NOT for building, constructing, or assembling things even if the words 'carry' or 'foldable' appear",
+    "Plumbing": "Pipes, water, drains, toilets, sinks, showers, bathrooms (water-related), rørlegger/rørleggerarbeid, relocating/moving kitchen or bathroom plumbing to a new room within a home",
+    "Transport / Moving": "ONLY for physically moving/transporting ITEMS or FURNITURE from place A to place B, helping someone relocate to a new address, pickup/delivery of items, needing a moving van. NOT for building, constructing, or assembling things even if the words 'carry' or 'foldable' appear. NOT for relocating rooms/fixtures within a home (that's Plumbing or Painting / Renovation)",
     "Manual Labor": "Heavy lifting, carrying heavy items, physical work, loading/unloading, demolition, removal work, outdoor physical labor - no qualifications required",
     "Painting / Renovation": "Painting walls, spackling, wallpaper, renovation, construction work, tiling (fliser), carpentry (snekker), building/constructing custom items or structures, woodwork, demolition, removing walls or structures",
     "Cleaning / Garden": "House cleaning, garden work, lawn care, window washing, snow removal",
@@ -208,7 +208,8 @@ Instructions:
 - Choose exactly ONE primary category — the MAIN task the person needs done.
 - Also list any secondary categories if the post involves additional tasks from other categories. Only include secondary categories that are clearly mentioned — don't guess.
 - "Car Mechanic" is for work DONE ON a vehicle (repairs, brakes, tires, engine, inspections, tow bar/tilhengerfeste installation, car painting/lakkering, software updates on cars). If someone needs something installed or fixed ON their car, it's Car Mechanic.
-- "Transport / Moving" is ONLY for physically moving/transporting items from place A to place B, or helping someone relocate. NOT for installing parts on vehicles.
+- "Transport / Moving" is ONLY for physically moving/transporting items from place A to place B, or helping someone relocate to a new address. NOT for installing parts on vehicles. NOT for relocating a kitchen/bathroom/room within a home — that's a renovation/plumbing job.
+- "Plumbing" includes any rørlegger/rørleggerarbeid, setting up pipes for kitchens or bathrooms, AND relocating plumbing to a different room within a home (e.g. "kjøkken som skal flyttes fra et rom til et annet").
 - "Painting / Renovation" covers carpentry (snekker), building custom items, woodwork, construction.
 - "Assembly / Furniture" is for assembling pre-made/flat-pack items (IKEA, shelves, TV mounting).
 - "Manual Labor" is for heavy lifting, carrying, demolition, removal work.
@@ -222,6 +223,7 @@ EXAMPLES:
 - "Trenger hjelp til å kaste søppel, noe bæring involvert" → primary: "Manual Labor", secondary: ["Transport / Moving"]
 - "Montere tilhengerfeste med software på en Volvo XC90" → primary: "Car Mechanic", secondary: [] (work ON a vehicle)
 - Building foldable wall panels by a carpenter → primary: "Painting / Renovation", secondary: []
+- "Ønsker pris på rørleggerarbeid til bad, samt opplegg og montering av rør til kjøkken som skal flyttes fra naborom til stue" → primary: "Plumbing", secondary: [] (rørlegger work + relocating kitchen plumbing within a home is NOT transport)
 
 Respond in JSON format only:
 {{

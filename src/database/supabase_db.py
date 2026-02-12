@@ -55,8 +55,65 @@ def get_existing_post(post_id: str) -> Optional[Dict]:
 
 
 def post_exists(post_id: str) -> bool:
-    """Check if a post already exists in the database."""
+    """Check if a post already exists in the database (by ID only)."""
     return get_existing_post(post_id) is not None
+
+
+def _normalize_text(text: str) -> str:
+    """Normalize post text for comparison: strip whitespace, collapse spaces."""
+    if not text:
+        return ""
+    return re.sub(r'\s+', ' ', text.strip())
+
+
+def find_duplicate_by_text(text: str) -> Optional[Dict]:
+    """
+    Find an existing post with the exact same text content.
+    
+    Does a direct exact-match query on the text column.
+    
+    Returns the matching post dict if found, None otherwise.
+    """
+    if not text or len(text.strip()) < 20:
+        return None
+    
+    try:
+        result = supabase.table("posts").select("*").eq(
+            "text", text
+        ).limit(1).execute()
+        
+        if result.data:
+            return result.data[0]
+        
+        return None
+    except Exception as e:
+        print(f"Error checking text duplicate: {e}")
+        return None
+
+
+def is_duplicate_post(post_id: str, text: str = "") -> bool:
+    """
+    Check if a post is a duplicate using BOTH ID and text comparison.
+    
+    First checks by post_id (fast, indexed). If not found by ID,
+    falls back to text-based comparison to catch posts scraped with
+    different IDs (e.g. hash-based vs real Facebook ID).
+    
+    Returns True if the post already exists (duplicate).
+    """
+    # Step 1: Check by post ID
+    if post_id and post_id != "unknown" and post_exists(post_id):
+        return True
+    
+    # Step 2: Check by text content (catches same post with different IDs)
+    if text:
+        duplicate = find_duplicate_by_text(text)
+        if duplicate:
+            dup_id = duplicate.get("post_id", "?")
+            print(f"    [DEDUP] Text match found: new ID '{post_id}' matches existing '{dup_id}'")
+            return True
+    
+    return False
 
 
 def save_post(post: Post, use_ai: bool = False) -> bool:
@@ -70,7 +127,7 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
     Returns:
         True if the post was newly added, False if it already existed.
     """
-    # Check if post already exists
+    # Check if post already exists (by ID)
     existing = get_existing_post(post["post_id"])
     
     if existing:
@@ -83,6 +140,13 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
                 post.get("secondary_categories", [])
             )
         return False  # Post already existed
+    
+    # Also check by text content (catches same post with different IDs)
+    text_dup = find_duplicate_by_text(post.get("text", ""))
+    if text_dup:
+        dup_id = text_dup.get("post_id", "?")
+        print(f"    [DEDUP] save_post: text match — new '{post['post_id']}' ≈ existing '{dup_id}', skipping")
+        return False
     
     try:
         # Parse the Facebook timestamp to get actual posted time

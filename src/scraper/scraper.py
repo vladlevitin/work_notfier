@@ -225,6 +225,27 @@ def click_reload_button(driver: WebDriver) -> bool:
         return False
 
 
+def dismiss_facebook_overlays(driver: WebDriver) -> None:
+    """
+    Lightweight fix for Facebook overlays that block scrolling.
+    Only uses safe JS — no clicking buttons, no removing DOM elements.
+    """
+    try:
+        driver.execute_script("""
+            // Re-enable scrolling if Facebook disabled it (login/signup overlay)
+            document.body.style.overflow = '';
+            document.documentElement.style.overflow = '';
+            // Hide (don't remove) login/signup overlay backdrops so scrolling works
+            document.querySelectorAll('[role="dialog"]').forEach(function(el) {
+                if (el.querySelector('a[href*="login"], a[href*="reg"], input[name="email"]')) {
+                    el.style.display = 'none';
+                }
+            });
+        """)
+    except Exception:
+        pass
+
+
 def sort_by_new_posts(driver: WebDriver, group_url: str = None, retry_count: int = 0) -> bool:
     """
     Sort the Facebook group feed by 'New posts' instead of 'Most relevant'.
@@ -372,15 +393,15 @@ def sort_by_new_posts(driver: WebDriver, group_url: str = None, retry_count: int
         print("    [SORT] Sorted by 'New posts'")
         
         # Wait for feed to reload with new sorting
-        time.sleep(2.0)
+        time.sleep(1.0)
         try:
             WebDriverWait(driver, 10).until(
                 lambda d: d.find_elements(By.CSS_SELECTOR, "[role='feed'] [data-ad-rendering-role='story_message']")
                 or d.find_elements(By.CSS_SELECTOR, "[role='feed'] [data-ad-preview='message']")
             )
-            time.sleep(1.0)  # Extra settle time after content appears
+            time.sleep(0.5)  # Extra settle time after content appears
         except Exception:
-            time.sleep(2.0)  # Fallback wait if WebDriverWait fails
+            time.sleep(1.5)  # Fallback wait if WebDriverWait fails
         
         # Check if error page appeared after clicking
         if is_error_page(driver):
@@ -635,6 +656,9 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
 
     posts_dict: dict[str, Post] = {}
 
+    # Dismiss any Facebook overlays/popups that might block scrolling
+    dismiss_facebook_overlays(driver)
+
     for scroll_num in range(scroll_steps):
         # Expand all "See more" buttons on visible page before extracting text
         expand_all_see_more(driver)
@@ -642,8 +666,21 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
         # Find all post text elements - try multiple selectors
         text_elements = driver.find_elements(By.CSS_SELECTOR, "[role='feed'] [data-ad-rendering-role='story_message']")
         if not text_elements:
-            # Fallback selector
+            # Fallback selector 1
             text_elements = driver.find_elements(By.CSS_SELECTOR, "[role='feed'] [data-ad-preview='message']")
+        if not text_elements:
+            # Fallback selector 2: look for text inside article elements
+            try:
+                articles = driver.find_elements(By.CSS_SELECTOR, "[role='feed'] [role='article']")
+                for article in articles:
+                    try:
+                        # Find the main text block inside the article
+                        msg_divs = article.find_elements(By.CSS_SELECTOR, "[data-ad-rendering-role='story_message'], [data-ad-preview='message']")
+                        text_elements.extend(msg_divs)
+                    except Exception:
+                        continue
+            except Exception:
+                pass
         
         for text_element in text_elements:
             try:
@@ -854,22 +891,41 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
 
         # Scroll down to load more posts
         prev_count = len(posts_dict)
+        
+        # Scroll to the absolute bottom to trigger Facebook's lazy-loader.
+        # The loading skeleton placeholders sit at the bottom of the feed —
+        # we must scroll past them to make Facebook replace them with real posts.
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         
         # Wait for new content to load (Facebook lazy-loads posts)
-        time.sleep(random.uniform(2.0, 3.5))
+        time.sleep(random.uniform(1.5, 2.5))
         
         # Extra wait if no new posts appeared (give Facebook more time)
         if len(posts_dict) == prev_count and scroll_num < scroll_steps - 1:
-            time.sleep(1.5)
+            time.sleep(1.0)
+            # Re-enable scrolling if Facebook blocked it
+            dismiss_facebook_overlays(driver)
 
     # Final collection after scrolling
+    # Dismiss overlays one more time before final collection
+    dismiss_facebook_overlays(driver)
     # Expand all "See more" buttons before final collection
     expand_all_see_more(driver)
     
     text_elements = driver.find_elements(By.CSS_SELECTOR, "[role='feed'] [data-ad-rendering-role='story_message']")
     if not text_elements:
         text_elements = driver.find_elements(By.CSS_SELECTOR, "[role='feed'] [data-ad-preview='message']")
+    if not text_elements:
+        try:
+            articles = driver.find_elements(By.CSS_SELECTOR, "[role='feed'] [role='article']")
+            for article in articles:
+                try:
+                    msg_divs = article.find_elements(By.CSS_SELECTOR, "[data-ad-rendering-role='story_message'], [data-ad-preview='message']")
+                    text_elements.extend(msg_divs)
+                except Exception:
+                    continue
+        except Exception:
+            pass
     
     for text_element in text_elements:
         try:

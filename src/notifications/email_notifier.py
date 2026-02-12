@@ -51,16 +51,29 @@ def load_env_config() -> dict[str, str]:
     return config
 
 
+class _TimeoutSession(requests.Session):
+    """Requests session with a default timeout for all requests (used by MSAL)."""
+
+    def __init__(self, timeout: int = 15):
+        super().__init__()
+        self._timeout = timeout
+
+    def request(self, *args, **kwargs):  # type: ignore[override]
+        kwargs.setdefault("timeout", self._timeout)
+        return super().request(*args, **kwargs)
+
+
 def get_graph_token(tenant_id: str, client_id: str, client_secret: str) -> str:
     """Get Microsoft Graph access token using application credentials."""
     app = ConfidentialClientApplication(
         client_id=client_id,
         client_credential=client_secret,
         authority=f"https://login.microsoftonline.com/{tenant_id}",
+        http_client=_TimeoutSession(timeout=15),
     )
     token = app.acquire_token_for_client(scopes=["https://graph.microsoft.com/.default"])
     if "access_token" not in token:
-        raise SystemExit(f"Failed to get token: {token.get('error_description', 'Unknown error')}")
+        raise RuntimeError(f"Failed to get token: {token.get('error_description', 'Unknown error')}")
     return token["access_token"]
 
 
@@ -210,4 +223,4 @@ def send_email_notification(posts: list[Post], group_url: str) -> None:
     )
 
     if resp.status_code >= 300:
-        raise SystemExit(f"Failed to send email ({resp.status_code}): {resp.text[:500]}")
+        raise RuntimeError(f"Failed to send email ({resp.status_code}): {resp.text[:500]}")

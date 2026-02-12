@@ -15,7 +15,7 @@ from selenium.webdriver.edge.service import Service
 
 # Import from new structure
 from src.scraper import scrape_facebook_group, filter_posts_by_keywords
-from src.database import save_post, post_exists, mark_as_notified
+from src.database import save_post, post_exists, is_duplicate_post, mark_as_notified
 from src.notifications import send_email_notification
 from config.settings import load_facebook_groups, KEYWORDS
 
@@ -188,8 +188,8 @@ def monitor_groups():
                     new_posts_to_notify = []  # Collect matching posts for notification
                     
                     for post in posts:
-                        # Check if post already exists in database
-                        if post_exists(post["post_id"]):
+                        # Check if post already exists in database (by ID and text)
+                        if is_duplicate_post(post["post_id"], post.get("text", "")):
                             existing_count += 1
                         else:
                             # New post! Save it (with AI processing for category/location)

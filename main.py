@@ -18,7 +18,7 @@ load_dotenv()
 # Import from new structure
 from src.scraper import scrape_facebook_group, filter_posts_by_keywords, print_posts
 from monitor import create_driver
-from src.database import save_posts, mark_as_notified, post_exists
+from src.database import save_posts, mark_as_notified, post_exists, is_duplicate_post
 from src.notifications import send_email_notification
 from src.ai.ai_processor import is_service_request, process_post_with_ai
 from config.settings import load_facebook_groups, KEYWORDS
@@ -149,6 +149,7 @@ MAX_POST_AGE_HOURS = 24  # Only notify for posts within this many hours
 PARALLEL_MODE = False  # False = one browser, loop through groups one by one
 PERSISTENT_BROWSERS = False  # Not used in sequential mode
 MAX_PARALLEL_BROWSERS = 9  # Not used in sequential mode
+VERBOSE_OUTPUT = True  # True = print full post text, offer/request verdict, and category assignment
 # =============================================================================
 
 # Thread-safe print lock for parallel mode
@@ -301,6 +302,7 @@ def print_scrape_metadata(facebook_groups: list) -> None:
     total_scroll_steps = sum(g.get('scroll_steps', 5) for g in facebook_groups)
     
     print(f"\n[CONFIG] {total_groups} groups | {total_scroll_steps} total scrolls | {len(KEYWORDS)} keywords")
+    print(f"[CONFIG] Verbose output: {'ON' if VERBOSE_OUTPUT else 'OFF'}")
     print(f"[KEYWORDS] {', '.join(KEYWORDS[:8])}{'...' if len(KEYWORDS) > 8 else ''}")
 
 
@@ -341,13 +343,13 @@ def scrape_single_group(group_config: dict, group_idx: int, total_groups: int, o
         hash_id_count = sum(1 for p in posts if p.get('post_id', '').startswith('h_'))
         result["skipped_unknown"] = hash_id_count  # Track for stats (not actually skipped)
         
-        # Filter out existing posts
+        # Filter out existing posts (by ID and text content)
         existing_count = 0
         if posts:
             new_posts_only = []
             for post in posts:
                 post_id = post.get('post_id')
-                if post_id and post_exists(post_id):
+                if is_duplicate_post(post_id, post.get('text', '')):
                     existing_count += 1
                 else:
                     new_posts_only.append(post)
@@ -559,13 +561,13 @@ def scrape_group_with_persistent_driver(driver, group_config: dict, group_idx: i
         hash_id_count = sum(1 for p in posts if p.get('post_id', '').startswith('h_'))
         result["skipped_unknown"] = hash_id_count  # Track for stats (not actually skipped)
         
-        # Filter out existing posts
+        # Filter out existing posts (by ID and text content)
         existing_count = 0
         if posts:
             new_posts_only = []
             for post in posts:
                 post_id = post.get('post_id')
-                if post_id and post_exists(post_id):
+                if is_duplicate_post(post_id, post.get('text', '')):
                     existing_count += 1
                 else:
                     new_posts_only.append(post)
@@ -912,13 +914,13 @@ def run_scrape_cycle_multitab(driver, facebook_groups: list, openai_ok: bool, cy
             hash_id_count = sum(1 for p in posts if p.get('post_id', '').startswith('h_'))
             total_stats["skipped_unknown"] += hash_id_count  # Track for stats
             
-            # Filter out existing posts
+            # Filter out existing posts (by ID and text content)
             existing_count = 0
             if posts:
                 new_posts_only = []
                 for post in posts:
                     post_id = post.get('post_id')
-                    if post_id and post_exists(post_id):
+                    if is_duplicate_post(post_id, post.get('text', '')):
                         existing_count += 1
                     else:
                         new_posts_only.append(post)
@@ -943,10 +945,19 @@ def run_scrape_cycle_multitab(driver, facebook_groups: list, openai_ok: bool, cy
             if openai_ok and posts:
                 filtered_posts = []
                 for post in posts:
-                    if is_service_request(post.get('title', ''), post.get('text', '')):
+                    title = post.get('title', '')
+                    text = post.get('text', '')
+                    is_request = is_service_request(title, text)
+                    if is_request:
                         filtered_posts.append(post)
+                        if VERBOSE_OUTPUT:
+                            print(f"      [REQUEST] {title[:60]}")
+                            print(f"        Text: {text[:150]}{'...' if len(text) > 150 else ''}")
                     else:
                         total_stats["skipped_offers"] += 1
+                        if VERBOSE_OUTPUT:
+                            print(f"      [OFFER] {title[:60]}")
+                            print(f"        Text: {text[:150]}{'...' if len(text) > 150 else ''}")
                 posts = filtered_posts
             
             # Categorize with AI and send emails for relevant categories
@@ -968,6 +979,14 @@ def run_scrape_cycle_multitab(driver, facebook_groups: list, openai_ok: bool, cy
                     # Apply keyword fallback if AI returned General
                     category = get_category_with_fallback(title, text, ai_category)
                     post["category"] = category
+                    
+                    secondary = post.get("secondary_categories", [])
+                    sec_str = f" + {secondary}" if secondary else ""
+                    location = post.get("location", "Unknown")
+                    print(f"    -> [{category}]{sec_str} @ {location}")
+                    print(f"       {title[:70]}")
+                    if VERBOSE_OUTPUT:
+                        print(f"       Text: {text[:200]}{'...' if len(text) > 200 else ''}")
                     
                     # Send email if category matches
                     if category in EMAIL_CATEGORIES:
@@ -1075,13 +1094,13 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
         # Count posts with hash-based IDs (no URL-extracted ID found)
         hash_id_count = sum(1 for p in posts if p.get('post_id', '').startswith('h_'))
         
-        # EARLY CHECK: Filter out posts that already exist in database
+        # EARLY CHECK: Filter out posts that already exist in database (by ID and text)
         existing_count = 0
         if posts:
             new_posts_only = []
             for post in posts:
                 post_id = post.get('post_id')
-                if post_id and post_exists(post_id):
+                if is_duplicate_post(post_id, post.get('text', '')):
                     existing_count += 1
                 else:
                     new_posts_only.append(post)
@@ -1104,28 +1123,40 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
         offers_count = 0
         cached_skip_count = 0
         if openai_ok and posts:
-            print(f"    Filtering offers...", end=" ", flush=True)
+            print(f"    Filtering offers...", end="" if not VERBOSE_OUTPUT else "\n", flush=True)
             filtered_posts = []
             
             for post in posts:
                 post_hash = post.get('post_id', '')
+                title = post.get('title', '')
+                text = post.get('text', '')
+                
                 # Check session cache first — avoids re-evaluating the same rejected posts every cycle
                 if post_hash in _rejected_post_hashes:
                     cached_skip_count += 1
                     offers_count += 1
+                    if VERBOSE_OUTPUT:
+                        print(f"      [OFFER-cached] {title[:60]}")
                     continue
                 
-                if is_service_request(post.get('title', ''), post.get('text', '')):
+                is_request = is_service_request(title, text)
+                if is_request:
                     filtered_posts.append(post)
+                    if VERBOSE_OUTPUT:
+                        print(f"      [REQUEST] {title[:60]}")
+                        print(f"        Text: {text[:150]}{'...' if len(text) > 150 else ''}")
                 else:
                     offers_count += 1
                     # Cache the rejection so we don't re-evaluate next cycle
                     _rejected_post_hashes.add(post_hash)
+                    if VERBOSE_OUTPUT:
+                        print(f"      [OFFER] {title[:60]}")
+                        print(f"        Text: {text[:150]}{'...' if len(text) > 150 else ''}")
             
             skipped_offers += offers_count
             posts = filtered_posts
             cache_note = f" ({cached_skip_count} cached)" if cached_skip_count > 0 else ""
-            print(f"kept {len(posts)} requests, removed {offers_count} offers{cache_note}")
+            print(f"    kept {len(posts)} requests, removed {offers_count} offers{cache_note}")
         
         # Filter out old posts BEFORE processing
         if posts:
@@ -1166,11 +1197,17 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
                 category = get_category_with_fallback(title, text, ai_category)
                 post["category"] = category
                 
-                # Debug: print category for each post
+                # Print category for each post
+                secondary = post.get("secondary_categories", [])
+                sec_str = f" + {secondary}" if secondary else ""
+                location = post.get("location", "Unknown")
                 if ai_category != category:
-                    print(f"    -> {title[:40]}... = [{category}] (AI: {ai_category})")
+                    print(f"    -> [{category}]{sec_str} @ {location} (AI: {ai_category})")
                 else:
-                    print(f"    -> {title[:40]}... = [{category}]")
+                    print(f"    -> [{category}]{sec_str} @ {location}")
+                print(f"       {title[:70]}")
+                if VERBOSE_OUTPUT:
+                    print(f"       Text: {text[:200]}{'...' if len(text) > 200 else ''}")
                 
                 # Send email if category matches
                 if category in EMAIL_CATEGORIES:

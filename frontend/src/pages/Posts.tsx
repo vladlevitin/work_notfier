@@ -231,7 +231,7 @@ export function PostsPage() {
   return (
     <div className="container">
       <div className="header">
-        <h1>🚗 Facebook Work Notifier Dashboard</h1>
+        <h1>🔔 Facebook Work Notifier Dashboard</h1>
         
         {/* Dynamic Post Count */}
         <div className="stats-bar stats-aggregate">
