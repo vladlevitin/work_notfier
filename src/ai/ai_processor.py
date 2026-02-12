@@ -27,11 +27,11 @@ CATEGORIES = {
     "Manual Labor": "Heavy lifting, carrying heavy items, physical work, loading/unloading, demolition, removal work, outdoor physical labor - no qualifications required",
     "Painting / Renovation": "Painting walls, spackling, wallpaper, renovation, construction work, tiling (fliser), carpentry (snekker), building/constructing custom items or structures, woodwork, demolition, removing walls or structures",
     "Cleaning / Garden": "House cleaning, garden work, lawn care, window washing, snow removal",
-    "Assembly / Furniture": "IKEA assembly, furniture mounting, shelves, TV mounting, disassembly",
+    "Assembly / Furniture": "IKEA assembly, furniture mounting, shelves, TV mounting, disassembly. NOT for catering, serving, events, or staffing",
     "Car Mechanic": "Any mechanical/repair work ON a vehicle (car, truck/lastebil, van, motorcycle): brakes, engine, tire changes, inspections, diagnostics, car sounds/noises. If someone needs work DONE ON the vehicle itself, it's Car Mechanic",
     "Handyman / Misc": "Small repairs, odd jobs that don't fit other specific categories",
     "IT / Tech": "Computer help, phone repair, smart home, technical support. NOT for taxi, driver, or vehicle-related posts",
-    "Other": "Posts that don't fit any of the above categories - e.g. crowdfunding, pet care, babysitting, tutoring, personal services, etc."
+    "Other": "Posts that don't fit any of the above categories - e.g. crowdfunding, pet care, babysitting, tutoring, personal services, catering/serving (serveringshjelp), event staffing, cooking, photography, etc."
 }
 
 CATEGORY_LIST = list(CATEGORIES.keys())
@@ -242,6 +242,7 @@ EXAMPLES:
 - Building foldable wall panels by a carpenter → primary: "Painting / Renovation", secondary: []
 - "Ønsker pris på rørleggerarbeid til bad, samt opplegg og montering av rør til kjøkken som skal flyttes fra naborom til stue" → primary: "Plumbing", secondary: [] (rørlegger work + relocating kitchen plumbing within a home is NOT transport)
 - "Jeg trenger sjåfør til Sprinter 9-seter med rullestoltilpassing, tilknyttet Asker Taxi 07000" → primary: "Transport / Moving", secondary: [] (driver/taxi/vehicle = Transport, NOT IT/Tech)
+- "Søker serveringshjelp med erfaring til privat kinesisk nyttår selskap" → primary: "Other", secondary: [] (catering/serving/event staffing = Other, NOT Assembly)
 
 Respond in JSON format only:
 {{
