@@ -23,14 +23,14 @@ AI_MODEL = "gpt-4o-mini"
 CATEGORIES = {
     "Electrical": "Electrician work, wiring, lights, mirrors with electrical connections, outlets, fuse boxes, stove guards",
     "Plumbing": "Pipes, water, drains, toilets, sinks, showers, bathrooms (water-related), rørlegger/rørleggerarbeid, relocating/moving kitchen or bathroom plumbing to a new room within a home",
-    "Transport / Moving": "ONLY for physically moving/transporting ITEMS or FURNITURE from place A to place B, helping someone relocate to a new address, pickup/delivery of items, needing a moving van. NOT for building, constructing, or assembling things even if the words 'carry' or 'foldable' appear. NOT for relocating rooms/fixtures within a home (that's Plumbing or Painting / Renovation)",
+    "Transport / Moving": "ONLY for physically moving/transporting ITEMS or FURNITURE from place A to place B, helping someone relocate to a new address, pickup/delivery of items, needing a moving van, needing a driver/sjåfør for transport or taxi. NOT for building, constructing, or assembling things even if the words 'carry' or 'foldable' appear. NOT for relocating rooms/fixtures within a home (that's Plumbing or Painting / Renovation)",
     "Manual Labor": "Heavy lifting, carrying heavy items, physical work, loading/unloading, demolition, removal work, outdoor physical labor - no qualifications required",
     "Painting / Renovation": "Painting walls, spackling, wallpaper, renovation, construction work, tiling (fliser), carpentry (snekker), building/constructing custom items or structures, woodwork, demolition, removing walls or structures",
     "Cleaning / Garden": "House cleaning, garden work, lawn care, window washing, snow removal",
     "Assembly / Furniture": "IKEA assembly, furniture mounting, shelves, TV mounting, disassembly",
     "Car Mechanic": "Any mechanical/repair work ON a vehicle (car, truck/lastebil, van, motorcycle): brakes, engine, tire changes, inspections, diagnostics, car sounds/noises. If someone needs work DONE ON the vehicle itself, it's Car Mechanic",
     "Handyman / Misc": "Small repairs, odd jobs that don't fit other specific categories",
-    "IT / Tech": "Computer help, phone repair, smart home, technical support",
+    "IT / Tech": "Computer help, phone repair, smart home, technical support. NOT for taxi, driver, or vehicle-related posts",
     "Other": "Posts that don't fit any of the above categories - e.g. crowdfunding, pet care, babysitting, tutoring, personal services, etc."
 }
 
@@ -49,9 +49,22 @@ def _is_obvious_offer(title: str, text: str) -> bool:
     
     combined = f"{title}\n{text}".lower()
     
+    # --- SAFEGUARD: If the post has clear REQUEST indicators, never pre-filter it ---
+    # These phrases strongly indicate someone NEEDS a service, even if other offer
+    # patterns also match (e.g. the full text might mention "send pm" as a contact method).
+    request_indicators = [
+        r'\b(vi|jeg)\s+har\s+\w+.*som\s+(må|trenger|skal)\b',  # "Vi har X som må hentes/kastes"
+        r'\bsom\s+må\s+(hentes|kastes|fjernes|ryddes|rives|fikses|repareres|byttes)',
+        r'\btrenger\s+hjelp\s+(med|til)\s+å\b',  # "trenger hjelp med å X" (specific task)
+    ]
+    for pattern in request_indicators:
+        if _re.search(pattern, combined):
+            return False  # Let the AI decide — don't pre-filter
+    
     # --- Pattern 1: "Trenger du/dere/noen hjelp" = asking if YOU need help = OFFER ---
     # "Trenger noen hjelp til å vaske huset?" / "Trenger du hjelp med flytting?"
     if _re.search(r'trenger\s+(du|dere|noen)\s+hjelp', combined):
+        print(f"    [PRE-FILTER] Matched: 'trenger du/noen hjelp'")
         return True
     
     # --- Pattern 2: "Tilbyr" / "utfører" / "vi fikser" / "jeg kan" service language ---
@@ -63,6 +76,7 @@ def _is_obvious_offer(title: str, text: str) -> bool:
     ]
     for pattern in offer_verbs:
         if _re.search(pattern, combined):
+            print(f"    [PRE-FILTER] Matched: offer verb '{pattern}'")
             return True
     
     # --- Pattern 3: Short post + "send pm/melding" + no specific task ---
@@ -72,6 +86,7 @@ def _is_obvious_offer(title: str, text: str) -> bool:
     has_specific_task = bool(_re.search(r'(trenger\s+hjelp\s+(med|til)\b(?!.*\?))', combined))  # "trenger hjelp med/til" NOT ending in ?
     
     if is_short and has_contact_invite and not has_specific_task:
+        print(f"    [PRE-FILTER] Matched: short post + contact invite (len={len(combined)})")
         return True
     
     # --- Pattern 4: Job seeker patterns ---
@@ -85,6 +100,7 @@ def _is_obvious_offer(title: str, text: str) -> bool:
     ]
     for pattern in job_seeker_patterns:
         if _re.search(pattern, combined):
+            print(f"    [PRE-FILTER] Matched: job seeker '{pattern}'")
             return True
     
     return False
@@ -208,7 +224,8 @@ Instructions:
 - Choose exactly ONE primary category — the MAIN task the person needs done.
 - Also list any secondary categories if the post involves additional tasks from other categories. Only include secondary categories that are clearly mentioned — don't guess.
 - "Car Mechanic" is for work DONE ON a vehicle (repairs, brakes, tires, engine, inspections, tow bar/tilhengerfeste installation, car painting/lakkering, software updates on cars). If someone needs something installed or fixed ON their car, it's Car Mechanic.
-- "Transport / Moving" is ONLY for physically moving/transporting items from place A to place B, or helping someone relocate to a new address. NOT for installing parts on vehicles. NOT for relocating a kitchen/bathroom/room within a home — that's a renovation/plumbing job.
+- "Transport / Moving" is ONLY for physically moving/transporting items from place A to place B, helping someone relocate to a new address, or needing a driver/sjåfør for transport/taxi. NOT for installing parts on vehicles. NOT for relocating a kitchen/bathroom/room within a home — that's a renovation/plumbing job.
+- "IT / Tech" is ONLY for computer/phone/smart-home/technical support. Posts mentioning vehicles, drivers, taxis, vans (Sprinter, etc.) are NEVER IT/Tech.
 - "Plumbing" includes any rørlegger/rørleggerarbeid, setting up pipes for kitchens or bathrooms, AND relocating plumbing to a different room within a home (e.g. "kjøkken som skal flyttes fra et rom til et annet").
 - "Painting / Renovation" covers carpentry (snekker), building custom items, woodwork, construction.
 - "Assembly / Furniture" is for assembling pre-made/flat-pack items (IKEA, shelves, TV mounting).
@@ -224,6 +241,7 @@ EXAMPLES:
 - "Montere tilhengerfeste med software på en Volvo XC90" → primary: "Car Mechanic", secondary: [] (work ON a vehicle)
 - Building foldable wall panels by a carpenter → primary: "Painting / Renovation", secondary: []
 - "Ønsker pris på rørleggerarbeid til bad, samt opplegg og montering av rør til kjøkken som skal flyttes fra naborom til stue" → primary: "Plumbing", secondary: [] (rørlegger work + relocating kitchen plumbing within a home is NOT transport)
+- "Jeg trenger sjåfør til Sprinter 9-seter med rullestoltilpassing, tilknyttet Asker Taxi 07000" → primary: "Transport / Moving", secondary: [] (driver/taxi/vehicle = Transport, NOT IT/Tech)
 
 Respond in JSON format only:
 {{

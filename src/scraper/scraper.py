@@ -695,6 +695,15 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
                 if not text:
                     continue
                 
+                # Strip leftover Facebook UI text ("See more" / "Se mer") that
+                # sometimes remains when expand_all_see_more fails to click.
+                # This pollutes classification and breaks exact-text dedup.
+                import re as _re
+                text = _re.sub(r'\n?(?:See more|Se mer|Vis mer)\s*$', '', text).strip()
+                
+                if not text:
+                    continue
+                
                 # Extract title (first line or first 60 chars)
                 title_parts = text.split("\n", 1)
                 title = title_parts[0][:60] + ("..." if len(title_parts[0]) > 60 else "")
@@ -934,6 +943,13 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
                 text = text_element.text.strip()
             except StaleElementReferenceException:
                 continue
+            
+            if not text:
+                continue
+            
+            # Strip leftover Facebook UI text
+            import re as _re
+            text = _re.sub(r'\n?(?:See more|Se mer|Vis mer)\s*$', '', text).strip()
             
             if not text:
                 continue
