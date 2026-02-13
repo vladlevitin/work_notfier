@@ -10,7 +10,9 @@ from .supabase_db import (
     find_duplicate_by_text,
     get_existing_post,
     mark_as_notified,
-    get_stats
+    get_stats,
+    was_auto_message_sent,
+    mark_auto_message_sent,
 )
 
 __all__ = [
@@ -23,5 +25,7 @@ __all__ = [
     'find_duplicate_by_text',
     'get_existing_post',
     'mark_as_notified',
-    'get_stats'
+    'get_stats',
+    'was_auto_message_sent',
+    'mark_auto_message_sent',
 ]

@@ -201,6 +201,9 @@ export function PostDetailPage() {
             {post.notified === 1 && (
               <span className="notified-badge large">✅ Notified</span>
             )}
+            {post.auto_message_sent && (
+              <span className="notified-badge large messaged">📨 DM Sent</span>
+            )}
           </div>
           
           <h1 className="detail-title">{post.title}</h1>
@@ -260,6 +263,49 @@ export function PostDetailPage() {
             )}
           </div>
         </div>
+
+        {/* Auto-Message Section (only for posts where a DM was sent) */}
+        {post.auto_message_sent && (
+          <div className="detail-auto-message">
+            <h2>📨 Auto-Message Sent</h2>
+            
+            <div className="auto-message-estimate">
+              <div className="estimate-grid">
+                <div className="estimate-item">
+                  <span className="estimate-label">Estimated Hours</span>
+                  <span className="estimate-value highlight">{post.auto_message_hours}h</span>
+                </div>
+                <div className="estimate-item">
+                  <span className="estimate-label">Quoted Price</span>
+                  <span className="estimate-value highlight">{post.auto_message_price_nok} NOK</span>
+                </div>
+                <div className="estimate-item">
+                  <span className="estimate-label">Rate</span>
+                  <span className="estimate-value">400 NOK/hr</span>
+                </div>
+                {post.auto_message_item_summary && (
+                  <div className="estimate-item">
+                    <span className="estimate-label">Items</span>
+                    <span className="estimate-value">{post.auto_message_item_summary}</span>
+                  </div>
+                )}
+                {post.auto_message_sent_at && (
+                  <div className="estimate-item">
+                    <span className="estimate-label">Sent At</span>
+                    <span className="estimate-value">{formatDate(post.auto_message_sent_at)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="auto-message-content">
+              <h3>Message</h3>
+              <div className="auto-message-text">
+                {post.auto_message_text}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div className="detail-actions">

@@ -18,7 +18,7 @@ load_dotenv()
 # Import from new structure
 from src.scraper import scrape_facebook_group, filter_posts_by_keywords, print_posts
 from monitor import create_driver
-from src.database import save_posts, mark_as_notified, post_exists, is_duplicate_post
+from src.database import save_posts, mark_as_notified, post_exists, is_duplicate_post, was_auto_message_sent, mark_auto_message_sent
 from src.notifications import send_email_notification
 from src.ai.ai_processor import is_service_request, process_post_with_ai, estimate_transport_job, generate_transport_message
 from src.messaging import send_facebook_dm
@@ -1240,32 +1240,51 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
                 if (AUTO_MESSAGE_ENABLED and 
                     category in AUTO_MESSAGE_CATEGORIES and 
                     auto_messages_sent < AUTO_MESSAGE_MAX):
-                    print(f"    [AUTO-MSG] Transport post found - estimating price...")
-                    try:
-                        # Step 1: AI estimates job duration & price
-                        estimate = estimate_transport_job(title, text)
-                        hours = estimate["estimated_hours"]
-                        price = estimate["total_price_nok"]
-                        print(f"    [AUTO-MSG] Estimate: {hours}h -> {price} NOK")
-                        print(f"    [AUTO-MSG] Items: {estimate.get('item_summary', 'N/A')}")
-                        print(f"    [AUTO-MSG] Reasoning: {estimate.get('reasoning', 'N/A')}")
-                        
-                        # Step 2: Generate the message
-                        dm_message = generate_transport_message(title, text, estimate)
-                        print(f"    [AUTO-MSG] Message: {dm_message[:100]}...")
-                        
-                        # Step 3: Send the DM via Selenium
-                        success = send_facebook_dm(driver, post, dm_message)
-                        
-                        if success:
-                            auto_messages_sent += 1
-                            print(f"    [AUTO-MSG] DM sent! ({auto_messages_sent}/{AUTO_MESSAGE_MAX} this cycle)")
-                            if auto_messages_sent >= AUTO_MESSAGE_MAX:
-                                print(f"    [AUTO-MSG] Reached limit ({AUTO_MESSAGE_MAX}), no more DMs this cycle")
-                        else:
-                            print(f"    [AUTO-MSG] DM failed - will try next transport post")
-                    except Exception as e:
-                        print(f"    [AUTO-MSG] Error: {str(e)[:60]}")
+                    
+                    # --- Dedup check: skip if we already messaged this post ---
+                    post_id = post.get("post_id", "")
+                    already_sent = was_auto_message_sent(post_id, text)
+                    
+                    if already_sent:
+                        print(f"    [AUTO-MSG] SKIP - already messaged for this post (or duplicate)")
+                    else:
+                        print(f"    [AUTO-MSG] Transport post found - estimating price...")
+                        try:
+                            # Step 1: AI estimates job duration & price
+                            estimate = estimate_transport_job(title, text)
+                            hours = estimate["estimated_hours"]
+                            price = estimate["total_price_nok"]
+                            print(f"    [AUTO-MSG] Estimate: {hours}h -> {price} NOK")
+                            print(f"    [AUTO-MSG] Items: {estimate.get('item_summary', 'N/A')}")
+                            print(f"    [AUTO-MSG] Reasoning: {estimate.get('reasoning', 'N/A')}")
+                            
+                            # Step 2: Generate the message
+                            dm_message = generate_transport_message(title, text, estimate)
+                            print(f"    [AUTO-MSG] Message: {dm_message[:100]}...")
+                            
+                            # Step 3: Send the DM via Selenium
+                            success = send_facebook_dm(driver, post, dm_message)
+                            
+                            if success:
+                                auto_messages_sent += 1
+                                print(f"    [AUTO-MSG] DM sent! ({auto_messages_sent}/{AUTO_MESSAGE_MAX} this cycle)")
+                                
+                                # Step 4: Record in database so we never double-message
+                                mark_auto_message_sent(
+                                    post_id=post_id,
+                                    message_text=dm_message,
+                                    price_nok=price,
+                                    hours=hours,
+                                    item_summary=estimate.get("item_summary", "")
+                                )
+                                print(f"    [AUTO-MSG] Recorded in DB")
+                                
+                                if auto_messages_sent >= AUTO_MESSAGE_MAX:
+                                    print(f"    [AUTO-MSG] Reached limit ({AUTO_MESSAGE_MAX}), no more DMs this cycle")
+                            else:
+                                print(f"    [AUTO-MSG] DM failed - will try next transport post")
+                        except Exception as e:
+                            print(f"    [AUTO-MSG] Error: {str(e)[:60]}")
                         
             print(f"    Categorization done")
         

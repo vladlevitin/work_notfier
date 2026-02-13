@@ -17,6 +17,13 @@ export interface Post {
   secondary_categories?: string;  // JSON string of secondary category names
   location?: string;
   ai_processed?: boolean;
+  // Auto-message fields (transport posts)
+  auto_message_sent?: boolean;
+  auto_message_text?: string;
+  auto_message_price_nok?: number;
+  auto_message_hours?: number;
+  auto_message_item_summary?: string;
+  auto_message_sent_at?: string;
 }
 
 export interface PostsResponse {

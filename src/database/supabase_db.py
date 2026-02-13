@@ -339,6 +339,65 @@ def mark_as_notified(post_ids: list[str]) -> None:
         print(f"Error marking posts as notified: {e}")
 
 
+def was_auto_message_sent(post_id: str, text: str = "") -> bool:
+    """
+    Check if an auto-message has already been sent for this post.
+    Checks by post_id first, then by text content (catches duplicates with different IDs).
+    
+    Returns True if a message was already sent.
+    """
+    # Step 1: Check by post ID
+    if post_id and post_id != "unknown":
+        existing = get_existing_post(post_id)
+        if existing and existing.get("auto_message_sent"):
+            return True
+    
+    # Step 2: Check by text content (catches same post with different IDs)
+    if text:
+        duplicate = find_duplicate_by_text(text)
+        if duplicate and duplicate.get("auto_message_sent"):
+            dup_id = duplicate.get("post_id", "?")
+            print(f"    [AUTO-MSG] Already messaged duplicate: '{dup_id}'")
+            return True
+    
+    return False
+
+
+def mark_auto_message_sent(
+    post_id: str, 
+    message_text: str, 
+    price_nok: int, 
+    hours: float,
+    item_summary: str = ""
+) -> bool:
+    """
+    Record that an auto-message was sent for a post.
+    Updates the post record with message details.
+    
+    Returns True if updated successfully.
+    """
+    try:
+        update_data = {
+            "auto_message_sent": True,
+            "auto_message_text": message_text,
+            "auto_message_price_nok": price_nok,
+            "auto_message_hours": hours,
+            "auto_message_item_summary": item_summary,
+            "auto_message_sent_at": datetime.utcnow().isoformat(),
+        }
+        
+        supabase.table("posts").update(update_data).eq("post_id", post_id).execute()
+        return True
+    except Exception as e:
+        error_str = str(e)
+        # If auto_message columns don't exist yet, silently fail
+        if "auto_message" in error_str:
+            print(f"    [AUTO-MSG] DB columns not yet created. Run migration.")
+            return False
+        print(f"    [AUTO-MSG] Error saving message record: {error_str[:60]}")
+        return False
+
+
 def get_stats() -> dict:
     """Get database statistics."""
     try:

@@ -419,6 +419,9 @@ export function PostsPage() {
                   {post.notified === 1 && (
                     <span className="notified-badge">✅ Notified</span>
                   )}
+                  {post.auto_message_sent && (
+                    <span className="notified-badge messaged">📨 DM Sent ({post.auto_message_price_nok} NOK)</span>
+                  )}
                 </div>
                 
                 <div className="post-meta">

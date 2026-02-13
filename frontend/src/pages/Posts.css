@@ -389,6 +389,10 @@ body {
   white-space: nowrap;
 }
 
+.notified-badge.messaged {
+  background: #2e7d32;
+}
+
 .post-meta {
   display: flex;
   flex-direction: column;
