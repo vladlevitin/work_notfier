@@ -20,11 +20,15 @@ from src.scraper import scrape_facebook_group, filter_posts_by_keywords, print_p
 from monitor import create_driver
 from src.database import save_posts, mark_as_notified, post_exists, is_duplicate_post
 from src.notifications import send_email_notification
-from src.ai.ai_processor import is_service_request, process_post_with_ai
+from src.ai.ai_processor import is_service_request, process_post_with_ai, estimate_transport_job, generate_transport_message
+from src.messaging import send_facebook_dm
 from config.settings import load_facebook_groups, KEYWORDS
 
 # Categories that trigger email notifications
 EMAIL_CATEGORIES = ["Transport / Moving", "Manual Labor"]
+
+# Categories that trigger auto-messaging (DM to post author)
+AUTO_MESSAGE_CATEGORIES = ["Transport / Moving"]
 
 
 def get_category_with_fallback(title: str, text: str, ai_category: str) -> str:
@@ -150,6 +154,9 @@ PARALLEL_MODE = False  # False = one browser, loop through groups one by one
 PERSISTENT_BROWSERS = False  # Not used in sequential mode
 MAX_PARALLEL_BROWSERS = 9  # Not used in sequential mode
 VERBOSE_OUTPUT = True  # True = print full post text, offer/request verdict, and category assignment
+AUTO_MESSAGE_ENABLED = True  # True = automatically DM transport post authors with price estimate
+AUTO_MESSAGE_MAX = 1  # Max number of DMs to send per cycle (set to 1 for trial)
+AUTO_MESSAGE_RATE_NOK = 400  # Hourly rate in NOK for price estimation
 # =============================================================================
 
 # Thread-safe print lock for parallel mode
@@ -303,6 +310,10 @@ def print_scrape_metadata(facebook_groups: list) -> None:
     
     print(f"\n[CONFIG] {total_groups} groups | {total_scroll_steps} total scrolls | {len(KEYWORDS)} keywords")
     print(f"[CONFIG] Verbose output: {'ON' if VERBOSE_OUTPUT else 'OFF'}")
+    if AUTO_MESSAGE_ENABLED:
+        print(f"[CONFIG] Auto-messaging: ON (max {AUTO_MESSAGE_MAX}/cycle, {AUTO_MESSAGE_RATE_NOK} NOK/hr, categories: {AUTO_MESSAGE_CATEGORIES})")
+    else:
+        print(f"[CONFIG] Auto-messaging: OFF")
     print(f"[KEYWORDS] {', '.join(KEYWORDS[:8])}{'...' if len(KEYWORDS) > 8 else ''}")
 
 
@@ -1060,6 +1071,7 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
     skipped_existing = 0
     skipped_unknown = 0
     skipped_offers = 0
+    auto_messages_sent = 0  # Track DMs sent this cycle
 
     # Loop through all Facebook groups from config
     for idx, group_config in enumerate(facebook_groups, 1):
@@ -1223,6 +1235,38 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
                         print(f"    [EMAIL] Sent!")
                     except Exception as e:
                         print(f"    [EMAIL] Failed: {str(e)[:30]}")
+                
+                # Auto-message: Send DM to transport post authors with price estimate
+                if (AUTO_MESSAGE_ENABLED and 
+                    category in AUTO_MESSAGE_CATEGORIES and 
+                    auto_messages_sent < AUTO_MESSAGE_MAX):
+                    print(f"    [AUTO-MSG] Transport post found - estimating price...")
+                    try:
+                        # Step 1: AI estimates job duration & price
+                        estimate = estimate_transport_job(title, text)
+                        hours = estimate["estimated_hours"]
+                        price = estimate["total_price_nok"]
+                        print(f"    [AUTO-MSG] Estimate: {hours}h -> {price} NOK")
+                        print(f"    [AUTO-MSG] Items: {estimate.get('item_summary', 'N/A')}")
+                        print(f"    [AUTO-MSG] Reasoning: {estimate.get('reasoning', 'N/A')}")
+                        
+                        # Step 2: Generate the message
+                        dm_message = generate_transport_message(title, text, estimate)
+                        print(f"    [AUTO-MSG] Message: {dm_message[:100]}...")
+                        
+                        # Step 3: Send the DM via Selenium
+                        success = send_facebook_dm(driver, post, dm_message)
+                        
+                        if success:
+                            auto_messages_sent += 1
+                            print(f"    [AUTO-MSG] DM sent! ({auto_messages_sent}/{AUTO_MESSAGE_MAX} this cycle)")
+                            if auto_messages_sent >= AUTO_MESSAGE_MAX:
+                                print(f"    [AUTO-MSG] Reached limit ({AUTO_MESSAGE_MAX}), no more DMs this cycle")
+                        else:
+                            print(f"    [AUTO-MSG] DM failed - will try next transport post")
+                    except Exception as e:
+                        print(f"    [AUTO-MSG] Error: {str(e)[:60]}")
+                        
             print(f"    Categorization done")
         
         # Save filtered posts to database IMMEDIATELY
@@ -1255,6 +1299,8 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
     print(f"  Matches: {len(all_relevant_posts):>4} posts match keywords")
     if new_relevant_posts:
         print(f"  Emails:  {len(new_relevant_posts):>4} notifications sent")
+    if auto_messages_sent > 0:
+        print(f"  DMs:     {auto_messages_sent:>4} auto-messages sent")
     
     return {
         "scraped": len(all_scraped_posts),
@@ -1264,6 +1310,7 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
         "new_saved": len(all_new_posts),
         "relevant": len(all_relevant_posts),
         "notified": len(new_relevant_posts),
+        "auto_messages": auto_messages_sent,
         "duration": cycle_duration
     }
 

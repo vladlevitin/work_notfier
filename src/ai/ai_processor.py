@@ -409,6 +409,112 @@ This is for LOW-SKILL physical labor that someone can do without special qualifi
         return False
 
 
+def estimate_transport_job(title: str, text: str) -> Dict[str, any]:
+    """
+    Use AI to estimate the duration and price for a transport/moving job.
+    
+    Assumes:
+      - Rate: 400 NOK/hour
+      - The worker has a cargo vehicle (varebil)
+    
+    Returns:
+        Dictionary with: estimated_hours, total_price_nok, description, message
+    """
+    try:
+        prompt = f"""You are a Norwegian transport/moving worker with a cargo van (varebil).
+Analyze this transport job posting and estimate how long it will take and how much to charge.
+
+RATE: 400 NOK per hour (includes fuel and vehicle)
+
+Post Title: {title}
+Post Content: {text}
+
+Consider:
+- Distance mentioned (city A to city B) — estimate driving time
+- Size/weight of items to move (sofa, table, fridge, boxes, etc.)
+- Loading and unloading time
+- Number of items
+- Stairs/floors if mentioned
+- Any special handling required
+
+Round up to the nearest 0.5 hour. Minimum 1 hour.
+
+Respond in JSON format only:
+{{
+  "estimated_hours": <number>,
+  "total_price_nok": <number>,
+  "item_summary": "brief description of what needs to be moved",
+  "distance_estimate": "estimated distance or 'unknown'",
+  "reasoning": "1-2 sentences explaining the estimate"
+}}"""
+
+        response = client.chat.completions.create(
+            model=AI_MODEL,
+            messages=[
+                {"role": "system", "content": "You are an experienced Norwegian mover/transport worker. Give realistic time and price estimates. Always respond with valid JSON only."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2,
+            max_tokens=300
+        )
+        
+        content = response.choices[0].message.content.strip()
+        result = json.loads(content)
+        
+        hours = float(result.get("estimated_hours", 2))
+        price = int(result.get("total_price_nok", hours * 400))
+        
+        return {
+            "estimated_hours": hours,
+            "total_price_nok": price,
+            "item_summary": result.get("item_summary", "transport job"),
+            "distance_estimate": result.get("distance_estimate", "unknown"),
+            "reasoning": result.get("reasoning", ""),
+        }
+    except Exception as e:
+        # Fallback: assume 2 hours
+        return {
+            "estimated_hours": 2,
+            "total_price_nok": 800,
+            "item_summary": "transport job",
+            "distance_estimate": "unknown",
+            "reasoning": f"Fallback estimate (AI error: {str(e)[:50]})",
+        }
+
+
+def generate_transport_message(title: str, text: str, estimate: Dict) -> str:
+    """
+    Generate a Norwegian message to send to the poster of a transport job.
+    
+    Args:
+        title: Post title
+        text: Post text content
+        estimate: Dictionary from estimate_transport_job()
+    
+    Returns:
+        A polite Norwegian message string
+    """
+    hours = estimate["estimated_hours"]
+    price = estimate["total_price_nok"]
+    item_summary = estimate.get("item_summary", "transporten")
+    
+    # Format hours nicely
+    if hours == int(hours):
+        hours_str = f"{int(hours)} time{'r' if hours != 1 else ''}"
+    else:
+        hours_str = f"{hours} timer"
+    
+    message = (
+        f"Hei! Jeg leste innlegget ditt om {item_summary}. "
+        f"Jeg har varebil og kan hjelpe med dette. "
+        f"Basert på oppdraget estimerer jeg at det vil ta ca. {hours_str}, "
+        f"og prisen vil ligge på rundt {price} kr (400 kr/time). "
+        f"Gi meg gjerne beskjed om du er interessert, så finner vi en tid som passer!"
+    )
+    
+    return message
+
+
 def should_process_with_ai(post_id: str, existing_data: Optional[Dict] = None) -> bool:
     """
     Check if post should be processed with AI.
