@@ -74,14 +74,29 @@ export function PostDetailPage() {
       }
     }
     
+    // For hash-ID posts: use Facebook group search with keywords from the post
+    // This searches within the group for the post content, which usually finds the exact post
+    if (post.post_id && post.post_id.startsWith('h_') && post.text) {
+      const groupIdMatch = post.group_url.match(/\/groups\/(\d+)/);
+      if (groupIdMatch) {
+        // Take first ~60 chars of text, trim to last full word
+        const searchText = post.text.substring(0, 60).replace(/\s+\S*$/, '').trim();
+        if (searchText.length > 10) {
+          return `https://www.facebook.com/groups/${groupIdMatch[1]}/search/?q=${encodeURIComponent(searchText)}`;
+        }
+      }
+    }
+    
     // Fallback to stored URL (may be group URL for hash-ID posts)
     return post.url;
   };
 
-  // Check if we have a direct link to the post (not just the group)
-  const hasDirectPostUrl = (post: Post): boolean => {
+  // Check what kind of link we have
+  const getPostUrlType = (post: Post): 'direct' | 'search' | 'group' => {
     const url = getPostUrl(post);
-    return url !== post.group_url;
+    if (url.includes('/posts/') || url.includes('/permalink/') || url.includes('story_fbid=')) return 'direct';
+    if (url.includes('/search/?q=')) return 'search';
+    return 'group';
   };
 
   const categoryIcons: Record<string, string> = {
@@ -254,7 +269,12 @@ export function PostDetailPage() {
             rel="noopener noreferrer"
             className="primary-button"
           >
-            🔗 {hasDirectPostUrl(post) ? 'View Post on Facebook' : 'View on Facebook (Group)'}
+            🔗 {(() => {
+              const type = getPostUrlType(post);
+              if (type === 'direct') return 'View Post on Facebook';
+              if (type === 'search') return 'Find Post on Facebook';
+              return 'View on Facebook (Group)';
+            })()}
           </a>
           
           <a 
