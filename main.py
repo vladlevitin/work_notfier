@@ -1076,6 +1076,7 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
     Run a single scrape cycle through all Facebook groups (sequential mode).
     Returns stats about the cycle.
     """
+    global shutdown_requested
     cycle_start = datetime.now()
     print(f"\n{'='*80}")
     print(f"CYCLE {cycle_num} | {cycle_start.strftime('%H:%M:%S')} | {len(facebook_groups)} groups | sequential mode")
