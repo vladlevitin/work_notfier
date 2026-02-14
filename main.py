@@ -29,7 +29,7 @@ from config.settings import load_facebook_groups, KEYWORDS
 EMAIL_CATEGORIES = ["Transport / Moving", "Manual Labor"]
 
 # Categories that trigger auto-messaging (DM to post author)
-AUTO_MESSAGE_CATEGORIES = ["Transport / Moving", "Manual Labor"]
+AUTO_MESSAGE_CATEGORIES = ["Transport / Moving", "Manual Labor", "Other"]
 
 
 def get_category_with_fallback(title: str, text: str, ai_category: str) -> str:

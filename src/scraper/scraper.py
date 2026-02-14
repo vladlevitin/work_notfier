@@ -907,17 +907,24 @@ def scrape_facebook_group(driver: WebDriver, group_url: str, scroll_steps: int =
         # Scroll down to load more posts
         prev_count = len(posts_dict)
         
-        # Scroll to the absolute bottom to trigger Facebook's lazy-loader.
-        # The loading skeleton placeholders sit at the bottom of the feed —
-        # we must scroll past them to make Facebook replace them with real posts.
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        # Use incremental scrolling to trigger Facebook's lazy-loader.
+        # Jumping straight to document.body.scrollHeight is a no-op when
+        # no new content has been appended — the height doesn't change.
+        # Instead, scroll by ~1.2 viewport heights each step so the
+        # intersection-observer that Facebook uses fires correctly.
+        viewport_h = driver.execute_script("return window.innerHeight;") or 900
+        current_scroll = driver.execute_script("return window.pageYOffset;") or 0
+        target_scroll = current_scroll + int(viewport_h * 1.2)
+        driver.execute_script(f"window.scrollTo(0, {target_scroll});")
         
         # Wait for new content to load (Facebook lazy-loads posts)
-        time.sleep(random.uniform(1.5, 2.5))
+        time.sleep(random.uniform(2.5, 4.0))
         
         # Extra wait if no new posts appeared (give Facebook more time)
         if len(posts_dict) == prev_count and scroll_num < scroll_steps - 1:
-            time.sleep(1.0)
+            # Try scrolling to the absolute bottom as a fallback
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(2.0)
             # Re-enable scrolling if Facebook blocked it
             dismiss_facebook_overlays(driver)
 
