@@ -63,6 +63,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Debug dumps (HTML, screenshots from failed DM attempts)
+debug_dumps/
+
 .vercel
 .env*.local
 

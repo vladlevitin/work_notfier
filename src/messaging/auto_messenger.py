@@ -12,9 +12,11 @@ Flow:
 The poster's name is verified against the chat window title before sending.
 """
 
+import os
 import time
 import re
 import traceback
+from datetime import datetime
 from typing import Optional, Tuple
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -26,6 +28,61 @@ from selenium.common.exceptions import (
     ElementClickInterceptedException,
     StaleElementReferenceException,
 )
+
+# Debug dump directory
+DEBUG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "debug_dumps")
+
+
+def _save_debug_dump(driver, step: str, post: dict = None, error_msg: str = "") -> str:
+    """
+    Save a debug dump (HTML + screenshot + metadata) when something fails.
+    Returns the path to the dump folder.
+    """
+    try:
+        os.makedirs(DEBUG_DIR, exist_ok=True)
+        
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        dump_dir = os.path.join(DEBUG_DIR, f"{ts}_{step}")
+        os.makedirs(dump_dir, exist_ok=True)
+        
+        # Save page HTML
+        try:
+            html = driver.page_source
+            html_path = os.path.join(dump_dir, "page.html")
+            with open(html_path, "w", encoding="utf-8") as f:
+                f.write(html)
+        except Exception as e:
+            with open(os.path.join(dump_dir, "html_error.txt"), "w") as f:
+                f.write(f"Could not save HTML: {e}")
+        
+        # Save screenshot
+        try:
+            screenshot_path = os.path.join(dump_dir, "screenshot.png")
+            driver.save_screenshot(screenshot_path)
+        except Exception:
+            pass
+        
+        # Save metadata
+        meta_path = os.path.join(dump_dir, "meta.txt")
+        with open(meta_path, "w", encoding="utf-8") as f:
+            f.write(f"Timestamp: {ts}\n")
+            f.write(f"Step: {step}\n")
+            f.write(f"Error: {error_msg}\n")
+            f.write(f"Current URL: {driver.current_url}\n")
+            f.write(f"Page title: {driver.title}\n")
+            if post:
+                f.write(f"\nPost ID: {post.get('post_id', 'N/A')}\n")
+                f.write(f"Post URL: {post.get('url', 'N/A')}\n")
+                f.write(f"Post title: {post.get('title', 'N/A')}\n")
+                f.write(f"Post text: {post.get('text', 'N/A')}\n")
+                f.write(f"Group URL: {post.get('group_url', 'N/A')}\n")
+            f.write(f"\nFull traceback:\n{traceback.format_exc()}\n")
+        
+        print(f"      [DEBUG] Dump saved to: {dump_dir}")
+        return dump_dir
+    except Exception as e:
+        print(f"      [DEBUG] Could not save dump: {e}")
+        return ""
 
 
 def _dismiss_overlays(driver) -> None:
@@ -54,7 +111,7 @@ def _dismiss_overlays(driver) -> None:
         pass
 
 
-def _find_poster_info(driver, post_url: str, group_url: str) -> Tuple[Optional[str], Optional[str]]:
+def _find_poster_info(driver, post_url: str, group_url: str, post: dict = None) -> Tuple[Optional[str], Optional[str]]:
     """
     Navigate to a Facebook post and extract the poster's user ID and name.
     
@@ -66,6 +123,7 @@ def _find_poster_info(driver, post_url: str, group_url: str) -> Tuple[Optional[s
         driver: Selenium WebDriver instance
         post_url: Direct URL to the Facebook post
         group_url: The group URL (for context)
+        post: The full post dict (for debug dumps)
         
     Returns:
         Tuple of (user_id, poster_name), or (None, None) if not found
@@ -258,11 +316,15 @@ def _find_poster_info(driver, post_url: str, group_url: str) -> Tuple[Optional[s
             print(f"      [MSG] Current URL: {driver.current_url[:120]}")
         except Exception:
             print("      [MSG] Could not find poster's profile info (no links to dump)")
+        
+        # Save debug dump for later analysis
+        _save_debug_dump(driver, "find_poster_FAILED", post, "Could not find poster's profile link")
         return None, None
         
     except Exception as e:
         print(f"      [MSG] Error finding poster info: {str(e)}")
         traceback.print_exc()
+        _save_debug_dump(driver, "find_poster_ERROR", post, str(e))
         return None, None
 
 
@@ -422,6 +484,7 @@ def _type_and_send_message(driver, message: str) -> bool:
                     print(f"        [{i}] tag={inp.get('tag')} | aria='{inp.get('ariaLabel')}' | role={inp.get('role')} | lexical={inp.get('lexical')} | visible={inp.get('visible')}")
             except Exception:
                 print("      [MSG] Could not find Messenger chat input field (no elements to dump)")
+            _save_debug_dump(driver, "messenger_input_NOT_FOUND", error_msg="Chat input field not found")
             return False
         
         print("      [MSG] Typing message...")
@@ -536,7 +599,7 @@ def send_facebook_dm(driver, post: dict, message: str) -> bool:
     
     try:
         # Step 1: Find the poster's user ID and name from the post page
-        user_id, poster_name = _find_poster_info(driver, post_url, group_url)
+        user_id, poster_name = _find_poster_info(driver, post_url, group_url, post)
         
         if not user_id:
             print("      [MSG] Failed: Could not extract poster's user ID")
@@ -559,12 +622,14 @@ def send_facebook_dm(driver, post: dict, message: str) -> bool:
             print(f"      [MSG] SUCCESS - DM sent to '{poster_name}' for: {title}")
         else:
             print(f"      [MSG] FAILED - Could not send DM to '{poster_name}' for: {title}")
+            _save_debug_dump(driver, "send_message_FAILED", post, "Message typing/sending failed")
         
         return success
         
     except Exception as e:
         print(f"      [MSG] Unexpected error: {str(e)}")
         traceback.print_exc()
+        _save_debug_dump(driver, "dm_UNEXPECTED_ERROR", post, str(e))
         return False
     
     finally:
