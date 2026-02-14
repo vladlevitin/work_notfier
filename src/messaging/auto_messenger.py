@@ -71,8 +71,16 @@ def _find_poster_info(driver, post_url: str, group_url: str) -> Tuple[Optional[s
         Tuple of (user_id, poster_name), or (None, None) if not found
     """
     try:
-        print(f"      [MSG] Navigating to post: {post_url[:80]}...")
-        driver.get(post_url)
+        # Clean the URL: strip comment_id and tracking parameters
+        # Facebook URLs with ?comment_id= load focused on a comment, hiding the poster's profile
+        clean_post_url = post_url.split('?')[0]
+        if clean_post_url != post_url:
+            print(f"      [MSG] Cleaned URL (stripped query params)")
+            print(f"        Original: {post_url[:100]}...")
+            print(f"        Clean:    {clean_post_url}")
+        
+        print(f"      [MSG] Navigating to post: {clean_post_url[:80]}...")
+        driver.get(clean_post_url)
         time.sleep(3)
         _dismiss_overlays(driver)
         

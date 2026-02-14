@@ -1297,8 +1297,27 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
                             print(f"      {dm_message}")
                             print(f"    {'─'*55}")
                             
+                            # Step 2.5: Wait for user confirmation before sending
+                            print(f"\n    {'*'*55}")
+                            print(f"    [CONFIRM] Ready to send DM to post author.")
+                            print(f"    [CONFIRM] Type 'yes' to send, anything else to skip:")
+                            print(f"    {'*'*55}")
+                            try:
+                                user_input = input("    >>> ").strip().lower()
+                            except EOFError:
+                                user_input = "no"
+                            
+                            if user_input != "yes":
+                                print(f"    [AUTO-MSG] SKIPPED by user (input: '{user_input}')")
+                                print(f"    {'='*55}\n")
+                                if AUTO_MESSAGE_STOP_AFTER:
+                                    print(f"\n    [AUTO-MSG] AUTO_MESSAGE_STOP_AFTER = True -> Stopping script for review.")
+                                    shutdown_requested = True
+                                continue
+                            
+                            print(f"    [AUTO-MSG] User confirmed. Sending DM via Facebook Messenger...")
+                            
                             # Step 3: Send the DM via Selenium
-                            print(f"    [AUTO-MSG] Sending DM via Facebook Messenger...")
                             success = send_facebook_dm(driver, post, dm_message)
                             
                             if success:
