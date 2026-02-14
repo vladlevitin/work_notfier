@@ -531,19 +531,15 @@ def generate_transport_message(title: str, text: str, estimate: Dict, category: 
     
     if is_transport:
         message = (
-            f"Hei! Jeg leste innlegget ditt om {item_summary}. "
-            f"Jeg har varebil og kan hjelpe med dette. "
-            f"Basert på oppdraget estimerer jeg at det vil ta ca. {hours_str}, "
-            f"og prisen vil ligge på rundt {price} kr (400 kr/time). "
-            f"Gi meg gjerne beskjed om du er interessert, så finner vi en tid som passer!"
+            f"Hei! Så innlegget ditt om {item_summary}. "
+            f"Jeg har varebil og kan fikse det for {price} kr. "
+            f"Si ifra om du er interessert!"
         )
     else:
         message = (
-            f"Hei! Jeg leste innlegget ditt om {item_summary}. "
-            f"Jeg er tilgjengelig og kan hjelpe med dette. "
-            f"Basert på oppdraget estimerer jeg at det vil ta ca. {hours_str}, "
-            f"og prisen vil ligge på rundt {price} kr (400 kr/time). "
-            f"Gi meg gjerne beskjed om du er interessert, så finner vi en tid som passer!"
+            f"Hei! Så innlegget ditt om {item_summary}. "
+            f"Kan hjelpe med det for {price} kr. "
+            f"Si ifra om du er interessert!"
         )
     
     return message
