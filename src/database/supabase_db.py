@@ -131,8 +131,18 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
     existing = get_existing_post(post["post_id"])
     
     if existing:
-        # Post already exists — but update its category/location if missing
-        if post.get("category") and not existing.get("category"):
+        # Post already exists — update category if we have a better one
+        new_cat = post.get("category", "")
+        old_cat = existing.get("category", "")
+        # Update if: new category is set AND (old is missing/General/Other OR new is different and non-generic)
+        if new_cat and new_cat not in ("", "General", "Other") and new_cat != old_cat:
+            update_post_category(
+                post["post_id"], 
+                post["category"],
+                post.get("location"),
+                post.get("secondary_categories", [])
+            )
+        elif new_cat and not old_cat:
             update_post_category(
                 post["post_id"], 
                 post["category"],
@@ -146,6 +156,16 @@ def save_post(post: Post, use_ai: bool = False) -> bool:
     if text_dup:
         dup_id = text_dup.get("post_id", "?")
         print(f"    [DEDUP] save_post: text match — new '{post['post_id']}' ≈ existing '{dup_id}', skipping")
+        # Still update category on the existing record if we have a better one
+        new_cat = post.get("category", "")
+        old_cat = text_dup.get("category", "")
+        if new_cat and new_cat not in ("", "General", "Other") and new_cat != old_cat:
+            update_post_category(
+                dup_id,
+                new_cat,
+                post.get("location"),
+                post.get("secondary_categories", [])
+            )
         return False
     
     try:
