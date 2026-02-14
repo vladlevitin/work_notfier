@@ -96,73 +96,69 @@ def _find_poster_info(driver, post_url: str, group_url: str) -> Tuple[Optional[s
         time.sleep(1)
         _dismiss_overlays(driver)
         
-        # ---- Strategy 1: Look for /groups/{gid}/user/{uid}/ links ----
-        # This is the primary pattern for poster profile links in Facebook groups
+        # ---- Strategy 1: Search ENTIRE PAGE for /user/ links ----
+        # When viewing a single post, the DOM structure can differ from the feed.
+        # Search everywhere, not just inside [role="article"].
         user_id = None
         poster_name = None
         
         try:
             result = driver.execute_script("""
-                // Find all links with /user/ pattern in the first article
-                var articles = document.querySelectorAll('[role="article"]');
-                var article = articles.length > 0 ? articles[0] : document;
-                
-                var links = article.querySelectorAll('a[href*="/user/"]');
-                for (var i = 0; i < links.length; i++) {
-                    var href = links[i].href || '';
-                    var match = href.match(/\\/groups\\/\\d+\\/user\\/(\\d+)/);
-                    if (match) {
-                        // Get the poster's display name from the link or nearby elements
-                        var name = '';
-                        
-                        // Check aria-label first
-                        if (links[i].getAttribute('aria-label')) {
-                            name = links[i].getAttribute('aria-label');
-                        }
-                        
-                        // Check text content of the link (might contain the name in bold)
-                        if (!name) {
-                            var strong = links[i].querySelector('strong, b, span');
-                            if (strong) {
-                                name = strong.textContent.trim();
-                            }
-                        }
-                        
-                        if (!name) {
-                            name = links[i].textContent.trim();
-                        }
-                        
-                        return {userId: match[1], name: name};
+                function extractName(el) {
+                    var name = el.getAttribute('aria-label') || '';
+                    if (!name) {
+                        var strong = el.querySelector('strong, b, span');
+                        if (strong) name = strong.textContent.trim();
                     }
+                    if (!name) name = el.textContent.trim();
+                    return name;
                 }
                 
-                // Fallback: look for direct profile links like /100095761503180/
-                var allLinks = article.querySelectorAll('a[href]');
-                for (var i = 0; i < Math.min(allLinks.length, 20); i++) {
-                    var href = allLinks[i].href || '';
+                // Search in all articles first, then fall back to full page
+                var containers = Array.from(document.querySelectorAll('[role="article"]'));
+                containers.push(document);  // full page as last resort
+                
+                for (var c = 0; c < containers.length; c++) {
+                    var ctx = containers[c];
                     
-                    // Skip non-profile links
-                    if (href.includes('/groups/') && !href.includes('/user/')) continue;
-                    if (href.includes('/posts/') || href.includes('/permalink/')) continue;
-                    if (href.includes('/photos/') || href.includes('/photo/')) continue;
-                    if (href.includes('/hashtag/') || href.includes('/events/')) continue;
-                    if (href.includes('/stories/') || href.includes('/share')) continue;
-                    if (href.includes('/help') || href.includes('#')) continue;
-                    
-                    // Match direct numeric profile ID: facebook.com/100095761503180
-                    var directMatch = href.match(/facebook\\.com\\/(\\d{10,})\\/?(?:\\?|$)/);
-                    if (directMatch) {
-                        var name = allLinks[i].getAttribute('aria-label') || 
-                                   allLinks[i].textContent.trim() || '';
-                        return {userId: directMatch[1], name: name};
+                    // 1a. Links with /groups/{gid}/user/{uid}/
+                    var userLinks = ctx.querySelectorAll('a[href*="/user/"]');
+                    for (var i = 0; i < userLinks.length; i++) {
+                        var href = userLinks[i].href || '';
+                        var match = href.match(/\\/groups\\/\\d+\\/user\\/(\\d+)/);
+                        if (match) return {userId: match[1], name: extractName(userLinks[i])};
                     }
                     
-                    // Match profile.php?id=123456
-                    var profileMatch = href.match(/profile\\.php\\?id=(\\d+)/);
-                    if (profileMatch) {
-                        var name = allLinks[i].getAttribute('aria-label') || 
-                                   allLinks[i].textContent.trim() || '';
-                        return {userId: profileMatch[1], name: name};
+                    // 1b. h2/h3 heading links (poster name at top of post)
+                    var headings = ctx.querySelectorAll('h2 a[href], h3 a[href], h4 a[href]');
+                    for (var i = 0; i < headings.length; i++) {
+                        var href = headings[i].href || '';
+                        var userMatch = href.match(/\\/user\\/(\\d+)/);
+                        if (userMatch) return {userId: userMatch[1], name: headings[i].textContent.trim()};
+                        var directMatch = href.match(/facebook\\.com\\/(\\d{10,})\\/?/);
+                        if (directMatch) return {userId: directMatch[1], name: headings[i].textContent.trim()};
+                        var profileMatch = href.match(/profile\\.php\\?id=(\\d+)/);
+                        if (profileMatch) return {userId: profileMatch[1], name: headings[i].textContent.trim()};
+                    }
+                    
+                    // 1c. Direct profile links (numeric ID or profile.php)
+                    if (ctx !== document) {
+                        var allLinks = ctx.querySelectorAll('a[href]');
+                        for (var i = 0; i < Math.min(allLinks.length, 30); i++) {
+                            var href = allLinks[i].href || '';
+                            if (href.includes('/groups/') && !href.includes('/user/')) continue;
+                            if (href.includes('/posts/') || href.includes('/permalink/')) continue;
+                            if (href.includes('/photos/') || href.includes('/photo/')) continue;
+                            if (href.includes('/hashtag/') || href.includes('/events/')) continue;
+                            if (href.includes('/stories/') || href.includes('/share')) continue;
+                            if (href.includes('/help') || href.includes('#')) continue;
+                            if (href.includes('/comment') || href.includes('/reaction')) continue;
+                            
+                            var directMatch = href.match(/facebook\\.com\\/(\\d{10,})\\/?(?:\\?|$)/);
+                            if (directMatch) return {userId: directMatch[1], name: extractName(allLinks[i])};
+                            var profileMatch = href.match(/profile\\.php\\?id=(\\d+)/);
+                            if (profileMatch) return {userId: profileMatch[1], name: extractName(allLinks[i])};
+                        }
                     }
                 }
                 
@@ -172,7 +168,6 @@ def _find_poster_info(driver, post_url: str, group_url: str) -> Tuple[Optional[s
             if result:
                 user_id = result.get('userId')
                 poster_name = result.get('name', '').strip()
-                # Clean up name - remove extra whitespace and non-printable chars
                 if poster_name:
                     poster_name = re.sub(r'\s+', ' ', poster_name).strip()
                 print(f"      [MSG] Found poster: '{poster_name}' (ID: {user_id})")
@@ -182,35 +177,34 @@ def _find_poster_info(driver, post_url: str, group_url: str) -> Tuple[Optional[s
             print(f"      [MSG] JS extraction error: {str(e)}")
             traceback.print_exc()
         
-        # ---- Strategy 2: Look for h2/h3 headings that contain the poster name ----
+        # ---- Strategy 2: Scroll up and retry ----
+        # Sometimes the poster info is above the viewport after page load
         try:
+            driver.execute_script("window.scrollTo(0, 0);")
+            time.sleep(2)
+            _dismiss_overlays(driver)
+            
             result = driver.execute_script("""
-                var articles = document.querySelectorAll('[role="article"]');
-                if (articles.length === 0) return null;
-                var article = articles[0];
-                
-                // Look for h2 or h3 inside the article (poster name heading)
-                var headings = article.querySelectorAll('h2 a[href], h3 a[href]');
+                var links = document.querySelectorAll('a[href*="/user/"]');
+                for (var i = 0; i < links.length; i++) {
+                    var href = links[i].href || '';
+                    var match = href.match(/\\/groups\\/\\d+\\/user\\/(\\d+)/);
+                    if (match) {
+                        var name = links[i].getAttribute('aria-label') || links[i].textContent.trim() || '';
+                        return {userId: match[1], name: name};
+                    }
+                    var directMatch = href.match(/\\/user\\/(\\d+)/);
+                    if (directMatch) {
+                        var name = links[i].getAttribute('aria-label') || links[i].textContent.trim() || '';
+                        return {userId: directMatch[1], name: name};
+                    }
+                }
+                // Also try h2/h3 links after scroll
+                var headings = document.querySelectorAll('h2 a[href], h3 a[href]');
                 for (var i = 0; i < headings.length; i++) {
                     var href = headings[i].href || '';
-                    
-                    // Check for /user/ pattern
-                    var userMatch = href.match(/\\/user\\/(\\d+)/);
-                    if (userMatch) {
-                        return {
-                            userId: userMatch[1], 
-                            name: headings[i].textContent.trim()
-                        };
-                    }
-                    
-                    // Check for direct numeric ID
-                    var directMatch = href.match(/facebook\\.com\\/(\\d{10,})\\/?/);
-                    if (directMatch) {
-                        return {
-                            userId: directMatch[1],
-                            name: headings[i].textContent.trim()
-                        };
-                    }
+                    var m = href.match(/facebook\\.com\\/(\\d{10,})\\/?/) || href.match(/profile\\.php\\?id=(\\d+)/);
+                    if (m) return {userId: m[1], name: headings[i].textContent.trim()};
                 }
                 return null;
             """)
@@ -220,32 +214,48 @@ def _find_poster_info(driver, post_url: str, group_url: str) -> Tuple[Optional[s
                 poster_name = result.get('name', '').strip()
                 if poster_name:
                     poster_name = re.sub(r'\s+', ' ', poster_name).strip()
-                print(f"      [MSG] Found poster (heading): '{poster_name}' (ID: {user_id})")
+                print(f"      [MSG] Found poster (after scroll-up): '{poster_name}' (ID: {user_id})")
                 return user_id, poster_name
-                
         except Exception as e:
-            print(f"      [MSG] Heading extraction error: {str(e)}")
-            traceback.print_exc()
+            print(f"      [MSG] Scroll-up retry error: {str(e)}")
         
-        # Last resort: dump all links found for debugging
+        # Last resort: dump ALL links on the page for debugging
         try:
-            all_links_info = driver.execute_script("""
+            debug_info = driver.execute_script("""
                 var articles = document.querySelectorAll('[role="article"]');
-                var article = articles.length > 0 ? articles[0] : document;
-                var links = article.querySelectorAll('a[href]');
+                var articleCount = articles.length;
+                var links = document.querySelectorAll('a[href]');
                 var result = [];
-                for (var i = 0; i < Math.min(links.length, 15); i++) {
+                for (var i = 0; i < Math.min(links.length, 25); i++) {
                     result.push({
-                        href: (links[i].href || '').substring(0, 120),
+                        href: (links[i].href || '').substring(0, 140),
                         text: (links[i].textContent || '').substring(0, 50).trim(),
-                        ariaLabel: (links[i].getAttribute('aria-label') || '').substring(0, 50)
+                        ariaLabel: (links[i].getAttribute('aria-label') || '').substring(0, 50),
+                        inArticle: false
                     });
                 }
-                return result;
+                // Also check inside each article
+                for (var a = 0; a < articles.length; a++) {
+                    var aLinks = articles[a].querySelectorAll('a[href]');
+                    for (var i = 0; i < Math.min(aLinks.length, 10); i++) {
+                        result.push({
+                            href: (aLinks[i].href || '').substring(0, 140),
+                            text: (aLinks[i].textContent || '').substring(0, 50).trim(),
+                            ariaLabel: (aLinks[i].getAttribute('aria-label') || '').substring(0, 50),
+                            inArticle: true
+                        });
+                    }
+                }
+                return {articleCount: articleCount, links: result};
             """)
-            print(f"      [MSG] Could not find poster's profile. Links found in article:")
+            article_count = debug_info.get('articleCount', 0) if debug_info else 0
+            all_links_info = debug_info.get('links', []) if debug_info else []
+            print(f"      [MSG] Could not find poster's profile. Articles on page: {article_count}")
+            print(f"      [MSG] Links found ({len(all_links_info)}):")
             for i, link_info in enumerate(all_links_info or []):
-                print(f"        [{i}] href={link_info.get('href','')} | text='{link_info.get('text','')}' | aria='{link_info.get('ariaLabel','')}'")
+                in_art = " [article]" if link_info.get('inArticle') else ""
+                print(f"        [{i}]{in_art} href={link_info.get('href','')} | text='{link_info.get('text','')}' | aria='{link_info.get('ariaLabel','')}'")
+            print(f"      [MSG] Current URL: {driver.current_url[:120]}")
         except Exception:
             print("      [MSG] Could not find poster's profile info (no links to dump)")
         return None, None
