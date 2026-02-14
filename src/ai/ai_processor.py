@@ -539,14 +539,12 @@ CONTEXT:
 - Item summary: {item_summary}
 
 RULES:
-- Max 2-3 sentences. Keep it SHORT like a real text message.
-- Casual Norwegian tone, like texting a stranger on Facebook.
-- Reference what they specifically need (not generic).
-- State the price naturally: "kan gjøre det for {price} kr" or similar.
-- End with something like "si ifra om det kunne vært interessant" or similar.
-- One emoji max (😊 or similar), placed naturally.
+- MUST start with "Hei, så at du la ut et innlegg om ..." referencing what they need.
+- Then state the price naturally: "kan gjøre jobben for {price} kr" or similar.
+- End with "si ifra om det kunne vært interessant" or similar.
+- Max 2-3 sentences total. Keep it SHORT like a real text message.
+- One emoji max (😊), placed at the end.
 - NO exclamation marks.
-- Do NOT start with "Hei!" - use "Hei," or "Hei" naturally.
 - Do NOT sound like a bot or a company. Sound like a helpful person.
 - Write ONLY the message text, nothing else."""
 
@@ -573,7 +571,7 @@ RULES:
         # Fallback to simple template if AI fails
         print(f"    [AI] Message generation failed ({str(e)[:40]}), using fallback")
         return (
-            f"Hei, så innlegget ditt om {item_summary}. "
+            f"Hei, så at du la ut et innlegg om {item_summary}. "
             f"Kan gjøre jobben for {price} kr. "
             f"Si ifra om det kunne vært interessant 😊"
         )
