@@ -541,7 +541,7 @@ CONTEXT:
 RULES:
 - MUST start with "Hei, så at du la ut et innlegg om ..." referencing what they need.
 - Then state the price naturally: "kan gjøre jobben for {price} kr" or similar.
-- End with "si ifra om det kunne vært interessant" or similar.
+- End with "ta gjerne kontakt dersom det kunne vært aktuelt" or similar.
 - Max 2-3 sentences total. Keep it SHORT like a real text message.
 - One emoji max (😊), placed at the end.
 - NO exclamation marks.
@@ -573,7 +573,7 @@ RULES:
         return (
             f"Hei, så at du la ut et innlegg om {item_summary}. "
             f"Kan gjøre jobben for {price} kr. "
-            f"Si ifra om det kunne vært interessant 😊"
+            f"Ta gjerne kontakt dersom det kunne vært aktuelt 😊"
         )
 
 
