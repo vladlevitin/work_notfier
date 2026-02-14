@@ -26,7 +26,7 @@ CATEGORIES = {
     "Transport / Moving": "ONLY for physically moving/transporting ITEMS or FURNITURE from place A to place B, helping someone relocate to a new address, pickup/delivery of items, needing a moving van, needing a driver/sjåfør for transport or taxi. NOT for building, constructing, or assembling things even if the words 'carry' or 'foldable' appear. NOT for relocating rooms/fixtures within a home (that's Plumbing or Painting / Renovation)",
     "Manual Labor": "Heavy lifting, carrying heavy items, physical work, loading/unloading, demolition, removal work, outdoor physical labor - no qualifications required",
     "Painting / Renovation": "Painting walls, spackling, wallpaper, renovation, construction work, tiling (fliser), carpentry (snekker), building/constructing custom items or structures, woodwork, demolition, removing walls or structures",
-    "Cleaning / Garden": "House cleaning, garden work, lawn care, window washing, snow removal",
+    "Cleaning / Garden": "House cleaning, apartment cleaning (vask/vasking/rengjøring), floor washing (gulvvask), kitchen cleaning, surface wiping, move-out cleaning (utvask), changing bed linens (sengetøy), taking out trash (søppel/boss), garden work, lawn care, window washing, snow removal. If the main task is CLEANING an apartment or house, it's Cleaning / Garden — NOT Painting / Renovation",
     "Assembly / Furniture": "IKEA assembly, furniture mounting, shelves, TV mounting, disassembly. NOT for catering, serving, events, or staffing",
     "Car Mechanic": "Any mechanical/repair work ON a vehicle (car, truck/lastebil, van, motorcycle): brakes, engine, tire changes, inspections, diagnostics, car sounds/noises. If someone needs work DONE ON the vehicle itself, it's Car Mechanic",
     "Handyman / Misc": "Small repairs, odd jobs that don't fit other specific categories",
@@ -227,7 +227,8 @@ Instructions:
 - "Transport / Moving" is ONLY for physically moving/transporting items from place A to place B, helping someone relocate to a new address, or needing a driver/sjåfør for transport/taxi. NOT for installing parts on vehicles. NOT for relocating a kitchen/bathroom/room within a home — that's a renovation/plumbing job.
 - "IT / Tech" is ONLY for computer/phone/smart-home/technical support. Posts mentioning vehicles, drivers, taxis, vans (Sprinter, etc.) are NEVER IT/Tech.
 - "Plumbing" includes any rørlegger/rørleggerarbeid, setting up pipes for kitchens or bathrooms, AND relocating plumbing to a different room within a home (e.g. "kjøkken som skal flyttes fra et rom til et annet").
-- "Painting / Renovation" covers carpentry (snekker), building custom items, woodwork, construction.
+- "Painting / Renovation" covers carpentry (snekker), building custom items, woodwork, construction. NOT for cleaning/washing apartments.
+- "Cleaning / Garden" is for ANY apartment/house cleaning task: vasking, gulvvask, utvask, rengjøring, sengetøy, taking out trash, surface wiping, window washing. If the post asks for help CLEANING, it's Cleaning / Garden.
 - "Assembly / Furniture" is for assembling pre-made/flat-pack items (IKEA, shelves, TV mounting).
 - "Manual Labor" is for heavy lifting, carrying, demolition, removal work.
 - Use "Other" for posts that genuinely don't fit any specific category.
@@ -243,6 +244,7 @@ EXAMPLES:
 - "Ønsker pris på rørleggerarbeid til bad, samt opplegg og montering av rør til kjøkken som skal flyttes fra naborom til stue" → primary: "Plumbing", secondary: [] (rørlegger work + relocating kitchen plumbing within a home is NOT transport)
 - "Jeg trenger sjåfør til Sprinter 9-seter med rullestoltilpassing, tilknyttet Asker Taxi 07000" → primary: "Transport / Moving", secondary: [] (driver/taxi/vehicle = Transport, NOT IT/Tech)
 - "Søker serveringshjelp med erfaring til privat kinesisk nyttår selskap" → primary: "Other", secondary: [] (catering/serving/event staffing = Other, NOT Assembly)
+- "Trenger vaske hjelp liten 43 kvm leilighet. Trenger vask av gulv bytte av sengetøy. Vasking av kjøkken ned med søppel vasking av overflater." → primary: "Cleaning / Garden", secondary: [] (apartment cleaning/washing = Cleaning, NOT Painting/Renovation)
 
 Respond in JSON format only:
 {{
