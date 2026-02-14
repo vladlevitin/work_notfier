@@ -7,6 +7,7 @@ import time
 import signal
 import sys
 import subprocess
+import traceback
 from pathlib import Path
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1316,7 +1317,8 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
                                 if auto_messages_sent >= AUTO_MESSAGE_MAX:
                                     print(f"    [AUTO-MSG] Reached limit ({AUTO_MESSAGE_MAX}), no more DMs this cycle")
                             else:
-                                print(f"    [AUTO-MSG] DM FAILED")
+                                print(f"    [AUTO-MSG] DM FAILED - see [MSG] output above for details")
+                                print(f"    [AUTO-MSG] Possible causes: could not find poster profile, Messenger input not found, message not typed")
                             print(f"    {'='*55}\n")
                             
                             # Stop the entire script after first DM attempt (for review)
@@ -1326,7 +1328,9 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
                                 shutdown_requested = True
                                 
                         except Exception as e:
-                            print(f"    [AUTO-MSG] Error: {str(e)[:100]}")
+                            print(f"    [AUTO-MSG] ERROR: {str(e)}")
+                            print(f"    [AUTO-MSG] Full traceback:")
+                            traceback.print_exc()
                             print(f"    {'='*55}\n")
                             if AUTO_MESSAGE_STOP_AFTER:
                                 print(f"\n    [AUTO-MSG] AUTO_MESSAGE_STOP_AFTER = True -> Stopping script for review.")

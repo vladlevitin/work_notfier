@@ -14,6 +14,7 @@ The poster's name is verified against the chat window title before sending.
 
 import time
 import re
+import traceback
 from typing import Optional, Tuple
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -170,7 +171,8 @@ def _find_poster_info(driver, post_url: str, group_url: str) -> Tuple[Optional[s
                 return user_id, poster_name
                 
         except Exception as e:
-            print(f"      [MSG] JS extraction error: {str(e)[:60]}")
+            print(f"      [MSG] JS extraction error: {str(e)}")
+            traceback.print_exc()
         
         # ---- Strategy 2: Look for h2/h3 headings that contain the poster name ----
         try:
@@ -214,13 +216,35 @@ def _find_poster_info(driver, post_url: str, group_url: str) -> Tuple[Optional[s
                 return user_id, poster_name
                 
         except Exception as e:
-            print(f"      [MSG] Heading extraction error: {str(e)[:60]}")
+            print(f"      [MSG] Heading extraction error: {str(e)}")
+            traceback.print_exc()
         
-        print("      [MSG] Could not find poster's profile info")
+        # Last resort: dump all links found for debugging
+        try:
+            all_links_info = driver.execute_script("""
+                var articles = document.querySelectorAll('[role="article"]');
+                var article = articles.length > 0 ? articles[0] : document;
+                var links = article.querySelectorAll('a[href]');
+                var result = [];
+                for (var i = 0; i < Math.min(links.length, 15); i++) {
+                    result.push({
+                        href: (links[i].href || '').substring(0, 120),
+                        text: (links[i].textContent || '').substring(0, 50).trim(),
+                        ariaLabel: (links[i].getAttribute('aria-label') || '').substring(0, 50)
+                    });
+                }
+                return result;
+            """)
+            print(f"      [MSG] Could not find poster's profile. Links found in article:")
+            for i, link_info in enumerate(all_links_info or []):
+                print(f"        [{i}] href={link_info.get('href','')} | text='{link_info.get('text','')}' | aria='{link_info.get('ariaLabel','')}'")
+        except Exception:
+            print("      [MSG] Could not find poster's profile info (no links to dump)")
         return None, None
         
     except Exception as e:
-        print(f"      [MSG] Error finding poster info: {str(e)[:60]}")
+        print(f"      [MSG] Error finding poster info: {str(e)}")
+        traceback.print_exc()
         return None, None
 
 
@@ -256,6 +280,7 @@ def _open_messenger_chat(driver, user_id: str, poster_name: str) -> bool:
         # Still continue - the chat might have loaded differently
     
     time.sleep(1)
+    print(f"      [MSG] Messenger loaded. Current URL: {driver.current_url[:80]}")
     
     # Verify the chat is with the right person by checking the chat header
     if poster_name and len(poster_name) > 2:
@@ -358,7 +383,27 @@ def _type_and_send_message(driver, message: str) -> bool:
                 pass
         
         if not input_field:
-            print("      [MSG] Could not find Messenger chat input field")
+            # Dump all contenteditable and textbox elements for debugging
+            try:
+                debug_inputs = driver.execute_script("""
+                    var editables = document.querySelectorAll('[contenteditable="true"]');
+                    var result = [];
+                    for (var i = 0; i < editables.length; i++) {
+                        result.push({
+                            tag: editables[i].tagName,
+                            ariaLabel: (editables[i].getAttribute('aria-label') || '').substring(0, 80),
+                            role: editables[i].getAttribute('role') || '',
+                            lexical: editables[i].getAttribute('data-lexical-editor') || '',
+                            visible: editables[i].offsetParent !== null
+                        });
+                    }
+                    return result;
+                """)
+                print(f"      [MSG] Could not find Messenger chat input. Contenteditable elements found:")
+                for i, inp in enumerate(debug_inputs or []):
+                    print(f"        [{i}] tag={inp.get('tag')} | aria='{inp.get('ariaLabel')}' | role={inp.get('role')} | lexical={inp.get('lexical')} | visible={inp.get('visible')}")
+            except Exception:
+                print("      [MSG] Could not find Messenger chat input field (no elements to dump)")
             return False
         
         print("      [MSG] Typing message...")
@@ -433,7 +478,8 @@ def _type_and_send_message(driver, message: str) -> bool:
             return True
         
     except Exception as e:
-        print(f"      [MSG] Error typing/sending message: {str(e)[:80]}")
+        print(f"      [MSG] Error typing/sending message: {str(e)}")
+        traceback.print_exc()
         return False
 
 
@@ -479,6 +525,7 @@ def send_facebook_dm(driver, post: dict, message: str) -> bool:
             return False
         
         print(f"      [MSG] Poster: '{poster_name}' | User ID: {user_id}")
+        print(f"      [MSG] Current browser URL: {driver.current_url[:80]}")
         
         # Step 2: Open Messenger chat directly
         chat_opened = _open_messenger_chat(driver, user_id, poster_name)
@@ -498,7 +545,8 @@ def send_facebook_dm(driver, post: dict, message: str) -> bool:
         return success
         
     except Exception as e:
-        print(f"      [MSG] Unexpected error: {str(e)[:80]}")
+        print(f"      [MSG] Unexpected error: {str(e)}")
+        traceback.print_exc()
         return False
     
     finally:
