@@ -157,6 +157,7 @@ VERBOSE_OUTPUT = True  # True = print full post text, offer/request verdict, and
 AUTO_MESSAGE_ENABLED = True  # True = automatically DM transport post authors with price estimate
 AUTO_MESSAGE_MAX = 1  # Max number of DMs to send per cycle (set to 1 for trial)
 AUTO_MESSAGE_RATE_NOK = 400  # Hourly rate in NOK for price estimation
+AUTO_MESSAGE_STOP_AFTER = True  # True = stop the entire script after first DM attempt (for review)
 # =============================================================================
 
 # Thread-safe print lock for parallel mode
@@ -327,6 +328,7 @@ def print_scrape_metadata(facebook_groups: list) -> None:
     print(f"  Max DMs per cycle:   {AUTO_MESSAGE_MAX}")
     print(f"  Rate:                {AUTO_MESSAGE_RATE_NOK} NOK/hr")
     print(f"  Target categories:   {AUTO_MESSAGE_CATEGORIES}")
+    print(f"  Stop after DM:       {AUTO_MESSAGE_STOP_AFTER}")
     print(f"{'─'*60}")
     print(f"  [KEYWORDS] {', '.join(KEYWORDS[:8])}{'...' if len(KEYWORDS) > 8 else ''}")
 
@@ -1314,11 +1316,21 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
                                 if auto_messages_sent >= AUTO_MESSAGE_MAX:
                                     print(f"    [AUTO-MSG] Reached limit ({AUTO_MESSAGE_MAX}), no more DMs this cycle")
                             else:
-                                print(f"    [AUTO-MSG] DM FAILED - will try next transport post")
+                                print(f"    [AUTO-MSG] DM FAILED")
                             print(f"    {'='*55}\n")
+                            
+                            # Stop the entire script after first DM attempt (for review)
+                            if AUTO_MESSAGE_STOP_AFTER:
+                                print(f"\n    [AUTO-MSG] AUTO_MESSAGE_STOP_AFTER = True -> Stopping script for review.")
+                                print(f"    [AUTO-MSG] Review the output above, then restart when ready.")
+                                shutdown_requested = True
+                                
                         except Exception as e:
                             print(f"    [AUTO-MSG] Error: {str(e)[:100]}")
                             print(f"    {'='*55}\n")
+                            if AUTO_MESSAGE_STOP_AFTER:
+                                print(f"\n    [AUTO-MSG] AUTO_MESSAGE_STOP_AFTER = True -> Stopping script for review.")
+                                shutdown_requested = True
                         
             print(f"    Categorization done")
         
