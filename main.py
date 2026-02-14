@@ -28,7 +28,7 @@ from config.settings import load_facebook_groups, KEYWORDS
 EMAIL_CATEGORIES = ["Transport / Moving", "Manual Labor"]
 
 # Categories that trigger auto-messaging (DM to post author)
-AUTO_MESSAGE_CATEGORIES = ["Transport / Moving"]
+AUTO_MESSAGE_CATEGORIES = ["Transport / Moving", "Manual Labor"]
 
 
 def get_category_with_fallback(title: str, text: str, ai_category: str) -> str:
@@ -1263,8 +1263,9 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
                         print(f"    [AUTO-MSG] SKIP - already messaged for this post (or duplicate)")
                     else:
                         print(f"\n    {'='*55}")
-                        print(f"    [AUTO-MSG] TRANSPORT POST FOUND")
+                        print(f"    [AUTO-MSG] {category.upper()} POST FOUND")
                         print(f"    {'='*55}")
+                        print(f"    Category:   {category}")
                         print(f"    Post ID:    {post_id}")
                         print(f"    Title:      {title}")
                         print(f"    Text:       {text}")
@@ -1275,7 +1276,7 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
                         print(f"    [AUTO-MSG] Estimating price...")
                         try:
                             # Step 1: AI estimates job duration & price
-                            estimate = estimate_transport_job(title, text)
+                            estimate = estimate_transport_job(title, text, category)
                             hours = estimate["estimated_hours"]
                             price = estimate["total_price_nok"]
                             print(f"    [ESTIMATE]")
@@ -1286,7 +1287,7 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
                             print(f"      Reasoning:  {estimate.get('reasoning', 'N/A')}")
                             
                             # Step 2: Generate the message
-                            dm_message = generate_transport_message(title, text, estimate)
+                            dm_message = generate_transport_message(title, text, estimate, category)
                             print(f"    {'─'*55}")
                             print(f"    [MESSAGE TO SEND]")
                             print(f"      {dm_message}")

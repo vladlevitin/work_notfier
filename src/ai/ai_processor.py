@@ -411,33 +411,51 @@ This is for LOW-SKILL physical labor that someone can do without special qualifi
         return False
 
 
-def estimate_transport_job(title: str, text: str) -> Dict[str, any]:
+def estimate_transport_job(title: str, text: str, category: str = "Transport / Moving") -> Dict[str, any]:
     """
-    Use AI to estimate the duration and price for a transport/moving job.
+    Use AI to estimate the duration and price for a job posting.
+    
+    Works for Transport/Moving AND Manual Labor jobs.
     
     Assumes:
       - Rate: 400 NOK/hour
-      - The worker has a cargo vehicle (varebil)
+      - For transport: worker has a cargo vehicle (varebil)
+      - For manual labor: worker is physically fit and available
     
     Returns:
-        Dictionary with: estimated_hours, total_price_nok, description, message
+        Dictionary with: estimated_hours, total_price_nok, item_summary, distance_estimate, reasoning
     """
-    try:
-        prompt = f"""You are a Norwegian transport/moving worker with a cargo van (varebil).
-Analyze this transport job posting and estimate how long it will take and how much to charge.
-
-RATE: 400 NOK per hour (includes fuel and vehicle)
-
-Post Title: {title}
-Post Content: {text}
-
-Consider:
+    is_transport = "transport" in category.lower() or "moving" in category.lower()
+    
+    if is_transport:
+        role = "a Norwegian transport/moving worker with a cargo van (varebil)"
+        considerations = """Consider:
 - Distance mentioned (city A to city B) — estimate driving time
 - Size/weight of items to move (sofa, table, fridge, boxes, etc.)
 - Loading and unloading time
 - Number of items
 - Stairs/floors if mentioned
-- Any special handling required
+- Any special handling required"""
+    else:
+        role = "a Norwegian manual laborer / handyman available for physical work"
+        considerations = """Consider:
+- Type of physical work (lifting, carrying, demolition, loading/unloading, etc.)
+- Number of items or volume of work described
+- Stairs/floors if mentioned (carrying up/down stairs takes longer)
+- Weight/size of items (gipsplater, møbler, etc.)
+- Whether multiple trips or helpers are needed
+- Any special requirements or tools mentioned"""
+    
+    try:
+        prompt = f"""You are {role}.
+Analyze this job posting and estimate how long it will take and how much to charge.
+
+RATE: 400 NOK per hour
+
+Post Title: {title}
+Post Content: {text}
+
+{considerations}
 
 Round up to the nearest 0.5 hour. Minimum 1 hour.
 
@@ -445,15 +463,15 @@ Respond in JSON format only:
 {{
   "estimated_hours": <number>,
   "total_price_nok": <number>,
-  "item_summary": "brief description of what needs to be moved",
-  "distance_estimate": "estimated distance or 'unknown'",
+  "item_summary": "brief description of the work to be done",
+  "distance_estimate": "estimated distance or 'N/A' if not applicable",
   "reasoning": "1-2 sentences explaining the estimate"
 }}"""
 
         response = client.chat.completions.create(
             model=AI_MODEL,
             messages=[
-                {"role": "system", "content": "You are an experienced Norwegian mover/transport worker. Give realistic time and price estimates. Always respond with valid JSON only."},
+                {"role": "system", "content": f"You are {role}. Give realistic time and price estimates. Always respond with valid JSON only."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.2,
@@ -469,8 +487,8 @@ Respond in JSON format only:
         return {
             "estimated_hours": hours,
             "total_price_nok": price,
-            "item_summary": result.get("item_summary", "transport job"),
-            "distance_estimate": result.get("distance_estimate", "unknown"),
+            "item_summary": result.get("item_summary", "jobb"),
+            "distance_estimate": result.get("distance_estimate", "N/A"),
             "reasoning": result.get("reasoning", ""),
         }
     except Exception as e:
@@ -478,27 +496,32 @@ Respond in JSON format only:
         return {
             "estimated_hours": 2,
             "total_price_nok": 800,
-            "item_summary": "transport job",
-            "distance_estimate": "unknown",
+            "item_summary": "jobb",
+            "distance_estimate": "N/A",
             "reasoning": f"Fallback estimate (AI error: {str(e)[:50]})",
         }
 
 
-def generate_transport_message(title: str, text: str, estimate: Dict) -> str:
+def generate_transport_message(title: str, text: str, estimate: Dict, category: str = "Transport / Moving") -> str:
     """
-    Generate a Norwegian message to send to the poster of a transport job.
+    Generate a Norwegian message to send to the poster of a job.
+    
+    Works for Transport/Moving AND Manual Labor jobs.
     
     Args:
         title: Post title
         text: Post text content
         estimate: Dictionary from estimate_transport_job()
+        category: The job category
     
     Returns:
         A polite Norwegian message string
     """
     hours = estimate["estimated_hours"]
     price = estimate["total_price_nok"]
-    item_summary = estimate.get("item_summary", "transporten")
+    item_summary = estimate.get("item_summary", "jobben")
+    
+    is_transport = "transport" in category.lower() or "moving" in category.lower()
     
     # Format hours nicely
     if hours == int(hours):
@@ -506,13 +529,22 @@ def generate_transport_message(title: str, text: str, estimate: Dict) -> str:
     else:
         hours_str = f"{hours} timer"
     
-    message = (
-        f"Hei! Jeg leste innlegget ditt om {item_summary}. "
-        f"Jeg har varebil og kan hjelpe med dette. "
-        f"Basert på oppdraget estimerer jeg at det vil ta ca. {hours_str}, "
-        f"og prisen vil ligge på rundt {price} kr (400 kr/time). "
-        f"Gi meg gjerne beskjed om du er interessert, så finner vi en tid som passer!"
-    )
+    if is_transport:
+        message = (
+            f"Hei! Jeg leste innlegget ditt om {item_summary}. "
+            f"Jeg har varebil og kan hjelpe med dette. "
+            f"Basert på oppdraget estimerer jeg at det vil ta ca. {hours_str}, "
+            f"og prisen vil ligge på rundt {price} kr (400 kr/time). "
+            f"Gi meg gjerne beskjed om du er interessert, så finner vi en tid som passer!"
+        )
+    else:
+        message = (
+            f"Hei! Jeg leste innlegget ditt om {item_summary}. "
+            f"Jeg er tilgjengelig og kan hjelpe med dette. "
+            f"Basert på oppdraget estimerer jeg at det vil ta ca. {hours_str}, "
+            f"og prisen vil ligge på rundt {price} kr (400 kr/time). "
+            f"Gi meg gjerne beskjed om du er interessert, så finner vi en tid som passer!"
+        )
     
     return message
 
