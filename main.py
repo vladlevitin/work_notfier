@@ -328,7 +328,7 @@ def print_scrape_metadata(facebook_groups: list) -> None:
     print(f"  Enabled:             {AUTO_MESSAGE_ENABLED}")
     print(f"  Max DMs per cycle:   {AUTO_MESSAGE_MAX}")
     print(f"  Rate:                {AUTO_MESSAGE_RATE_NOK} NOK/hr")
-    print(f"  Target categories:   {AUTO_MESSAGE_CATEGORIES}")
+    print(f"  Target categories:   ALL (any service request)")
     print(f"  Stop after DM:       {AUTO_MESSAGE_STOP_AFTER}")
     print(f"{'─'*60}")
     print(f"  [KEYWORDS] {', '.join(KEYWORDS[:8])}{'...' if len(KEYWORDS) > 8 else ''}")
@@ -1254,9 +1254,10 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
                     except Exception as e:
                         print(f"    [EMAIL] Failed: {str(e)[:30]}")
                 
-                # Auto-message: Send DM to transport post authors with price estimate
+                # Auto-message: Send DM to post authors with price estimate
+                # All service requests are valid work — the offer/request filter
+                # already removed non-relevant posts.  The user confirms via prompt.
                 if (AUTO_MESSAGE_ENABLED and 
-                    category in AUTO_MESSAGE_CATEGORIES and 
                     auto_messages_sent < AUTO_MESSAGE_MAX):
                     
                     # --- Dedup check: skip if we already messaged this post ---
