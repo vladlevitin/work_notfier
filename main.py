@@ -308,13 +308,27 @@ def print_scrape_metadata(facebook_groups: list) -> None:
     total_groups = len(facebook_groups)
     total_scroll_steps = sum(g.get('scroll_steps', 5) for g in facebook_groups)
     
-    print(f"\n[CONFIG] {total_groups} groups | {total_scroll_steps} total scrolls | {len(KEYWORDS)} keywords")
-    print(f"[CONFIG] Verbose output: {'ON' if VERBOSE_OUTPUT else 'OFF'}")
-    if AUTO_MESSAGE_ENABLED:
-        print(f"[CONFIG] Auto-messaging: ON (max {AUTO_MESSAGE_MAX}/cycle, {AUTO_MESSAGE_RATE_NOK} NOK/hr, categories: {AUTO_MESSAGE_CATEGORIES})")
-    else:
-        print(f"[CONFIG] Auto-messaging: OFF")
-    print(f"[KEYWORDS] {', '.join(KEYWORDS[:8])}{'...' if len(KEYWORDS) > 8 else ''}")
+    print(f"\n{'─'*60}")
+    print(f"  CONFIGURATION")
+    print(f"{'─'*60}")
+    print(f"  Groups:              {total_groups}")
+    print(f"  Total scroll steps:  {total_scroll_steps}")
+    print(f"  Keywords:            {len(KEYWORDS)}")
+    print(f"  Scrape interval:     {SCRAPE_INTERVAL_MINUTES} min {'(loop immediately)' if SCRAPE_INTERVAL_MINUTES == 0 else ''}")
+    print(f"  Clear DB on start:   {CLEAR_DATABASE_ON_START}")
+    print(f"  Max post age:        {MAX_POST_AGE_HOURS}h")
+    print(f"  Mode:                {'Parallel' if PARALLEL_MODE else 'Sequential'}")
+    print(f"  Verbose output:      {'ON' if VERBOSE_OUTPUT else 'OFF'}")
+    print(f"  Email categories:    {EMAIL_CATEGORIES}")
+    print(f"{'─'*60}")
+    print(f"  AUTO-MESSAGING")
+    print(f"{'─'*60}")
+    print(f"  Enabled:             {AUTO_MESSAGE_ENABLED}")
+    print(f"  Max DMs per cycle:   {AUTO_MESSAGE_MAX}")
+    print(f"  Rate:                {AUTO_MESSAGE_RATE_NOK} NOK/hr")
+    print(f"  Target categories:   {AUTO_MESSAGE_CATEGORIES}")
+    print(f"{'─'*60}")
+    print(f"  [KEYWORDS] {', '.join(KEYWORDS[:8])}{'...' if len(KEYWORDS) > 8 else ''}")
 
 
 def scrape_single_group(group_config: dict, group_idx: int, total_groups: int, openai_ok: bool) -> dict:
@@ -1248,26 +1262,43 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
                     if already_sent:
                         print(f"    [AUTO-MSG] SKIP - already messaged for this post (or duplicate)")
                     else:
-                        print(f"    [AUTO-MSG] Transport post found - estimating price...")
+                        print(f"\n    {'='*55}")
+                        print(f"    [AUTO-MSG] TRANSPORT POST FOUND")
+                        print(f"    {'='*55}")
+                        print(f"    Post ID:    {post_id}")
+                        print(f"    Title:      {title}")
+                        print(f"    Text:       {text}")
+                        print(f"    URL:        {post.get('url', 'N/A')}")
+                        print(f"    Group:      {post.get('group_name', 'N/A')}")
+                        print(f"    Location:   {post.get('location', 'Unknown')}")
+                        print(f"    {'─'*55}")
+                        print(f"    [AUTO-MSG] Estimating price...")
                         try:
                             # Step 1: AI estimates job duration & price
                             estimate = estimate_transport_job(title, text)
                             hours = estimate["estimated_hours"]
                             price = estimate["total_price_nok"]
-                            print(f"    [AUTO-MSG] Estimate: {hours}h -> {price} NOK")
-                            print(f"    [AUTO-MSG] Items: {estimate.get('item_summary', 'N/A')}")
-                            print(f"    [AUTO-MSG] Reasoning: {estimate.get('reasoning', 'N/A')}")
+                            print(f"    [ESTIMATE]")
+                            print(f"      Hours:      {hours}h")
+                            print(f"      Price:      {price} NOK (rate: {AUTO_MESSAGE_RATE_NOK} NOK/hr)")
+                            print(f"      Items:      {estimate.get('item_summary', 'N/A')}")
+                            print(f"      Distance:   {estimate.get('distance_estimate', 'N/A')}")
+                            print(f"      Reasoning:  {estimate.get('reasoning', 'N/A')}")
                             
                             # Step 2: Generate the message
                             dm_message = generate_transport_message(title, text, estimate)
-                            print(f"    [AUTO-MSG] Message: {dm_message[:100]}...")
+                            print(f"    {'─'*55}")
+                            print(f"    [MESSAGE TO SEND]")
+                            print(f"      {dm_message}")
+                            print(f"    {'─'*55}")
                             
                             # Step 3: Send the DM via Selenium
+                            print(f"    [AUTO-MSG] Sending DM via Facebook Messenger...")
                             success = send_facebook_dm(driver, post, dm_message)
                             
                             if success:
                                 auto_messages_sent += 1
-                                print(f"    [AUTO-MSG] DM sent! ({auto_messages_sent}/{AUTO_MESSAGE_MAX} this cycle)")
+                                print(f"    [AUTO-MSG] DM SENT! ({auto_messages_sent}/{AUTO_MESSAGE_MAX} this cycle)")
                                 
                                 # Step 4: Record in database so we never double-message
                                 mark_auto_message_sent(
@@ -1282,9 +1313,11 @@ def run_scrape_cycle(driver, facebook_groups: list, openai_ok: bool, cycle_num: 
                                 if auto_messages_sent >= AUTO_MESSAGE_MAX:
                                     print(f"    [AUTO-MSG] Reached limit ({AUTO_MESSAGE_MAX}), no more DMs this cycle")
                             else:
-                                print(f"    [AUTO-MSG] DM failed - will try next transport post")
+                                print(f"    [AUTO-MSG] DM FAILED - will try next transport post")
+                            print(f"    {'='*55}\n")
                         except Exception as e:
-                            print(f"    [AUTO-MSG] Error: {str(e)[:60]}")
+                            print(f"    [AUTO-MSG] Error: {str(e)[:100]}")
+                            print(f"    {'='*55}\n")
                         
             print(f"    Categorization done")
         
