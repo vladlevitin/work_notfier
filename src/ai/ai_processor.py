@@ -504,9 +504,10 @@ Respond in JSON format only:
 
 def generate_transport_message(title: str, text: str, estimate: Dict, category: str = "Transport / Moving") -> str:
     """
-    Generate a Norwegian message to send to the poster of a job.
+    Use AI to generate a short, casual Norwegian DM to the poster.
     
-    Works for Transport/Moving AND Manual Labor jobs.
+    The message should feel like a real person texting, not a bot.
+    References their specific post, states the price, and asks if interested.
     
     Args:
         title: Post title
@@ -515,34 +516,67 @@ def generate_transport_message(title: str, text: str, estimate: Dict, category: 
         category: The job category
     
     Returns:
-        A polite Norwegian message string
+        A casual Norwegian message string
     """
-    hours = estimate["estimated_hours"]
     price = estimate["total_price_nok"]
     item_summary = estimate.get("item_summary", "jobben")
     
     is_transport = "transport" in category.lower() or "moving" in category.lower()
     
-    # Format hours nicely
-    if hours == int(hours):
-        hours_str = f"{int(hours)} time{'r' if hours != 1 else ''}"
-    else:
-        hours_str = f"{hours} timer"
-    
+    extra_context = ""
     if is_transport:
-        message = (
-            f"Hei, så innlegget ditt om {item_summary}. "
-            f"Har varebil og kan fikse det for {price} kr. "
-            f"Bare si ifra om du er interessert 😊"
-        )
-    else:
-        message = (
-            f"Hei, så innlegget ditt om {item_summary}. "
-            f"Kan hjelpe med det for {price} kr. "
-            f"Bare si ifra om du er interessert 😊"
-        )
+        extra_context = "The sender has a cargo van (varebil) available."
     
-    return message
+    try:
+        prompt = f"""Write a SHORT casual Norwegian DM (Facebook Messenger style) to reply to this post.
+
+POST:
+{text[:500]}
+
+CONTEXT:
+- The sender can do this job for {price} kr.
+{f'- {extra_context}' if extra_context else ''}
+- Item summary: {item_summary}
+
+RULES:
+- Max 2-3 sentences. Keep it SHORT like a real text message.
+- Casual Norwegian tone, like texting a stranger on Facebook.
+- Reference what they specifically need (not generic).
+- State the price naturally: "kan gjøre det for {price} kr" or similar.
+- End with something like "si ifra om det kunne vært interessant" or similar.
+- One emoji max (😊 or similar), placed naturally.
+- NO exclamation marks.
+- Do NOT start with "Hei!" - use "Hei," or "Hei" naturally.
+- Do NOT sound like a bot or a company. Sound like a helpful person.
+- Write ONLY the message text, nothing else."""
+
+        response = client.chat.completions.create(
+            model=AI_MODEL,
+            messages=[
+                {"role": "system", "content": "You write short casual Norwegian messages. You sound like a real person texting on Facebook, not a company or bot."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=150
+        )
+        
+        message = response.choices[0].message.content.strip()
+        # Remove any wrapping quotes the AI might add
+        if message.startswith('"') and message.endswith('"'):
+            message = message[1:-1]
+        if message.startswith("'") and message.endswith("'"):
+            message = message[1:-1]
+        
+        return message
+        
+    except Exception as e:
+        # Fallback to simple template if AI fails
+        print(f"    [AI] Message generation failed ({str(e)[:40]}), using fallback")
+        return (
+            f"Hei, så innlegget ditt om {item_summary}. "
+            f"Kan gjøre jobben for {price} kr. "
+            f"Si ifra om det kunne vært interessant 😊"
+        )
 
 
 def should_process_with_ai(post_id: str, existing_data: Optional[Dict] = None) -> bool:
